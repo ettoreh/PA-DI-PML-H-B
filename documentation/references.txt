@@ -1,0 +1,53 @@
+1. S. Amari. A theory of adaptive pattern classifiers. IEEE Trans . on Electronic Computers, EC-16(3):299–307, June 1967.
+2. X. Anguera, A. Garzon, and T. Adamek. Mask: Robust local features for audio fingerprinting. In Proc. of ICME, 2012.
+3. L. J. Ba and R. Caruana. Do deep nets really need to be deep? In Proc. of NIPS, pages 2654—2662, 2014.
+4. A. Babenko, A. Slesarev, A. Chigorin, and V. Lempitsky. Neural codes for image retrieval. In D. Fleet, T. Pajdla, B. Schiele, and T. Tuytelaars, editors, Proc. of ECCV, pages 584–599, 2014.
+5. J. Barr, B. Bradley, and B. T. Hannigan. Using digital watermarks with image signatures to mitigate the threat of the copy attack. In Proc. of ICASSP, pages 69–72, 2003.
+6. Y. Bengio, A. Courville, and P. Vincent. Representation learning: A review and new perspectives. IEEE Trans. on Pattern Analysis and Machine Intelligence, 35(8):1798–1828, Aug 2013.
+7. J. Bergstra, O. Breuleux, F. Bastien, P. Lamblin, R. Pascanu, G. Desjardins, J. Turian, D. Warde-Farley, and Y. Bengio. Theano: a CPU and GPU math expression compiler. In Proc. of the Python for Scientific Computing Conference (SciPy), 2010.
+8. T. Chen, I. Goodfellow, and J. Shlens. Net2net: Accelerating learning via knowledge transfer. In Proc. of ICLR, 2016.
+9. F. Chollet. Keras. https://github.com/fchollet/keras , 2015.
+10. A. Choromanska, M. Henaff, M. Mathieu, G. Arous, and Y. Le Cun. The loss surfaces of multilayer networks. In Proc. of AIS- TATS, 2015.
+11. R. Collobert, K. Kavukcuoglu, and C. Farabet. Torch7: A matlab like environment for machine learning. In Proc. of NIPS Workshop on BigLearn, 2011.
+12. I. Cox, M. Miller, J. Bloom, J. Fridrich, and T. Kalker. Digital Watermarking and Steganography. Morgan Kaufmann Publishers Inc., 2 edition, 2008.
+13. Y. Dauphin, R. Pascanu, C. Gulcehre, K. Cho, S. Ganguli, and Y. Bengio. Identifying and attacking the saddle point problem in high-dimensional non-convex optimization. In Proc. of NIPS, 2014.
+14. D. Erhan, Y. Bengio, A. Courville, P.-A. Manzagol, P. Vincent, and S. Bengio. Why does unsupervised pre-training help deep learning? J. Mach. Learn. Res., 11:625–660, Mar. 2010.
+15. J.K.etal.Overcomingcatastrophicforgettinginneuralnetworks. PNAS, 114(13):3521–3526, 2017.
+16. L. Fei-Fei, R. Fergus, and P. Perona. Learning generative visual models from few training examples: an incremental bayesian ap- proach tested on 101 object categories. In Proc. of CVPR Work- shop on Generative-Model Based Vision, 2004.
+17. J. Haitsma and T. Kalker. A highly robust audio fingerprinting system. In Proc. of ISMIR, pages 107–115, 2002.
+18. S. Han, X. Liu, H. Mao, J. Pu, A. Pedram, M. A. Horowitz, and W. J. Dally. Eie: Efficient inference engine on compressed deep neural network. In Proc. of ISCA, 2016.
+19. S. Han, H. Mao, and W. J. Dally. Deep compression: Compressing deep neural networks with pruning, trained quantization and huffman coding. In Proc. of ICLR, 2016.
+20. S. Han, J. Pool, J. Tran, and W. J. Dally. Learning both weights and connections for efficient neural networks. In Proc. of NIPS, 2015.
+21. F. Hartung and M. Kutter. Multimedia watermarking techniques. In Proc. of the IEEE, volume 87, pages 1079–1107, 1999.
+22. K. He, X. Zhang, S. Ren, and J. Sun. Deep residual learning for image recognition. In Proc. of CVPR, 2016.
+23. G. Hinton, O. Vinyals, and J. Dean. Distilling the knowledge in a neural network. In Proc. of NIPS Workshop on Deep Learning and Representation Learning, 2014.
+24. G. E. Hinton and R. R. Salakhutdinov. Reducing the dimensionality of data with neural networks. Science, 313(5786):504–507, 2006.
+25. S.HochreiterandJ.Schmidhuber.Long short term memory. Neural Computation, 9(8):1735–1780, 1997.
+26. Y.Jia,E.Shelhamer,J.Donahue,S.Karayev,J.Long,R.Girshick, S. Guadarrama, and T. Darrell. Caffe: Convolutional architecture for fast feature embedding. In Proc. of MM, 2014.
+27. N. Johnson, Z. Duric, and S. Jajodia. Information Hiding: Steganography and Watermarking - Attacks and Countermea- sures. Springer, 2000.
+28. A. Joly, C. Frelicot, and O. Buisson. Content-based video copy de- tection in large databases: a local fingerprints statistical similarity search approach. In Proc. of ICIP, pages 505–508, 2005.
+29. A.Karpathy,G.Toderici,S.Shetty,T.Leung,R.Sukthankar,and L. Fei-Fei. Large-scale video classification with convolutional neural networks. In Proc. of ECCV, June 2014.
+30. J. Kodovsky, J. Fridrich, and V. Holub. Ensemble classifiers for steganalysis of digital media. IEEE Trans. on Information Foren- sics and Security, 7(2):432–444, 2012.
+31. A. Krizhevsky. Learning multiple layers of features from tiny im- ages. Tech Report, 2009.
+32. A. Krizhevsky, I. Sutskever, and G. E. Hinton. Imagenet classifi- cation with deep convolutional neural networks. In Proc. of NIPS, 2012.
+33. A. Krogh and J. A. Hertz. A simple weight decay can improve generalization. In Proc. of NIPS, 1992.
+34. Y. LeCun, Y. Bengio, and G. Hinton. Deep learning. Nature, 521(7553):436—444, 05 2015.
+35. Y. Lecun, L. Bottou, Y. Bengio, and P. Haffner. Gradient-based learning applied to document recognition. In Proc. of the IEEE, volume 86, pages 2278–2324, 1998.
+36. S. Lee, J. Kim, J. Jun, J. Ha, and B. Zhang. Overcoming catastrophic forgetting by incremental mome. In Proc. of NIPS, 2017.
+37. M. Abadi, et al. Tensorflow: Large-scale machine learning on heterogeneous distributed systems. arXiv:1603.04467, 2016.
+38. E. L. Merrer, P. Perez, and G. Tre ́dan. Adversarial frontier stitching for remote neural network watermarking. arXiv:1711.01894, 2017.
+39. Y. Nesterov. A method of solving a convex programming problem with convergence rate o(1/k2). Soviet Mathematics Doklady, 27(2):372–376, 2 1983.
+40. L. Pang, S. Zhu, and C. W. Ngo. Deep multimodal learning for affective analysis and retrieval. IEEE Trans. on Multimedia, 17(11):2008–2020, Nov 2015.
+41. L. Shaohui, Y. Hongxun, and G. Wen. Neural network based steganalysis in still images. In Proc. of ICME, 2003.
+42. K. Simonyan and A. Zisserman. Very deep convolutional networks for large-scale image recognition. In Proc. of ICLR, 2015.
+43. I. Sutskever, J. Martens, G. Dahl, and G. Hinton. On the importance of initialization and momentum in deep learning. In Proc. of ICML, volume 28, pages III–1139–III–1147, 2013.
+44. C. Szegedy, W. Liu, Y. Jia, P. Sermanet, S. Reed, D. Anguelov, D. Erhan, V. Vanhoucke, and A. Rabinovich. Going deeper with convolutions. In Proc. of CVPR, 2015.
+45. S. Tokui, K. Oono, S. Hido, and J. Clayton. Chainer: a next-generation open source framework for deep learning. In Proc. of NIPS Workshop on Machine Learning Systems, 2015.
+46. M. Toma ́sˇ, K. Martin, B. Luka ́sˇ, Cˇ. Jan, and K. Sanjeev. Recurrent neural network based language model. In Proc. of INTER- SPEECH, 2010.
+47. Y.Uchida,M.Agrawal,andS.Sakazawa.Accuratecontent-based video copy detection with efficient feature indexing. In Proc. of ICMR, 2011.
+48. Y. Uchida, Y. Nagai, S. Sakazawa, and S. Satoh. Embedding watermarks into deep neural networks. In Proc. of ICMR, 2017.
+49. A. van den Oord, S. Dieleman, and B. Schrauwen. Deep content-based music recommendation. In C. J. C. Burges, L. Bottou, M. Welling, Z. Ghahramani, and K. Q. Weinberger, editors, Proc. of NIPS, pages 2643–2651. Curran Associates, Inc., 2013.
+50. J. Wan, D. Wang, S. C. H. Hoi, P. Wu, J. Zhu, Y. Zhang, and J. Li. Deep learning for content-based image retrieval: A comprehensive study. In Proc. of MM, pages 157–166, 2014.
+51. T. Wei, C. Wang, Y. Rui, and C. W. Chen. Network morphism. In Proc. of ICML, 2016.
+52. S. Zagoruyko and N. Komodakis. Wide residual networks. In Proc. of ECCV, 2016.
+53. G. P. Zhang. Time series forecasting using a hybrid arima and neural network model. Neurocomputing, 50:159–175, January 2003.
