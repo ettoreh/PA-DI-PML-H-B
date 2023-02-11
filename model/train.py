@@ -58,7 +58,6 @@ if __name__ == '__main__':
     # device = torch.device('gpu' if torch.cuda.is_available() else 'cpu')
     device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
     print(device)
-    print([torch.cuda.device(i) for i in range(torch.cuda.device_count())])
     
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     
@@ -73,7 +72,7 @@ if __name__ == '__main__':
     
     for epoch in range(num_epochs):
         print('EPOCH {}:'.format(epoch_number + 1))
-        start = datetime.now().strftime('%Y%m%d_%H%M%S')
+        start = datetime.now()
         
         # Make sure gradient tracking is on, and do a pass over the data
         model.train(True)
@@ -85,8 +84,9 @@ if __name__ == '__main__':
             torch.save(model.state_dict(), model_path)
 
         epoch_number += 1
-        end = datetime.now().strftime('%Y%m%d_%H%M%S')
+        end = datetime.now()
         print("EPOCH time = {}".format(end-start))
+        
     model_path = '/models/model_{}'.format(timestamp)
     torch.save(model.state_dict(), model_path)
         
