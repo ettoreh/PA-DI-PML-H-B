@@ -3,7 +3,7 @@ import torch.nn as nn
 
 import numpy as np
 
-from secret_matrix import get_secret_matrix
+from .secret_matrix import get_secret_matrix
 
 
 

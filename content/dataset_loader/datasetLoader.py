@@ -1,4 +1,4 @@
-from loaders import cifar10 
+from .loaders import cifar10 
 
 
 class DatasetLoader():
@@ -12,6 +12,7 @@ class DatasetLoader():
             'cifar10': cifar10,
         }
         self.dataset = self.dataset_list[self.dataset_name]
+        self.classes = self.dataset.classes
         pass
     
     def trainset_loader(self):
