@@ -1,5 +1,6 @@
 /.ipynb_checkpoints
 /content/__pycache__
+/content/dataset_loader/loaders/__pycache__
 /content/networks/__pycache__
 /content/networks/mlpNet/__pycache__
 /content/networks/mlpNet/.ipynb_checkpoints
