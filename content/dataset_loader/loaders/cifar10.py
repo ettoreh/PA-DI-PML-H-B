@@ -21,7 +21,7 @@ transform = transforms.Compose(
 )
 
 
-def get_trainloader(batch_size: int):
+def trainset_loader(batch_size: int):
     """
     Args:
         batch_size (int): size of every batch
@@ -37,7 +37,7 @@ def get_trainloader(batch_size: int):
     )
     return trainloader
 
-def get_testloader(batch_size: int):
+def testset_loader(batch_size: int):
     """
     Args:
         batch_size (int): size if every batch
@@ -67,7 +67,7 @@ if __name__ == '__main__':
         plt.show()
 
     # get some random training images
-    trainloader = get_trainloader(batch_size)
+    trainloader = trainset_loader(batch_size)
     dataiter = iter(trainloader)
     images, labels = next(dataiter)
 
