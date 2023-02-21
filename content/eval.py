@@ -65,32 +65,35 @@ def get_model_accuracy_per_classes(net: nn.Module, data, classes: list) -> dict:
 if __name__ == '__main__':
     import sys
     
-    from watermark import secret_matrix
-    from dataset_loader import datasetLoader
-    from networks.mlpNet.Net import Net
+    from dataset_loader.datasetLoader import DatasetLoader
+    from networks.networks import Network
     
 
 
     model = sys.argv[1]
-    params = sys.argv[2]
-    model_path = sys.argv[3]
+    data = sys.argv[2]
+    params = sys.argv[3]
+    params = params.replace('[', '').replace(']', '').split(',')
+    params = [int(param) for param in params]
+    model_path = sys.argv[4]
     print(model)
-    print(params.replace('[', '').replace(']', '').split(','))
+    print(data)
+    print(params)
     print(model_path)
     
+    # device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
+    # print('on machine ', device)
     
-    device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
-    print('on machine ', device)
-    model = Net(10).to(device)
     # model_path = '/Users/ettorehidoux/Desktop/codes projects/PA-DI-PML-H-B/models/cifar_net_20230216_003445'
-    model.load_state_dict(torch.load(model_path))
-    print('model loaded')
+    model = Network(model_name=model, params=params)
+    model.load_model(model_path=model_path)
     
-    # accuracy = get_model_accuracy(model, testloader, device)
-    # print(f'Accuracy of the network on the 10000 test images: {accuracy} %')
+    dataset = DatasetLoader(dataset_name=data, batch_size=4)
+    test_data = dataset.testset_loader()
     
-    # # print accuracy for each class
-    # correct_pred, total_pred = get_model_accuracy_per_classes(model, testloader, classes, device)
-    # for classname, correct_count in correct_pred.items():
-    #     accuracy = 100 * float(correct_count) / total_pred[classname]
-    #     print(f'Accuracy for class: {classname:5s} is {accuracy:.1f} %')
+    accuracy = get_model_accuracy(model.model, test_data)
+    print(f'Accuracy of the network on the 10000 test images: {accuracy} %')
+    
+    percent_pred = get_model_accuracy_per_classes(model.model, test_data, dataset.classes)
+    for classname, acc in percent_pred.items():
+        print(f'Accuracy for class: {classname:5s} is {acc:.1f} %')
