@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 
 import numpy as np
+import pandas as pd
 
 from .secret_matrix import get_secret_matrix
 
@@ -19,6 +20,10 @@ class watermarkCrossEntropyLoss(nn.Module):
         x = np.dot(self.X, weights.flatten())
         x = self.sigmoid(torch.tensor(x))
         n = len(targets)
-        loss = -(1/n)*np.sum(targets * np.log(x) + (1-targets) * np.log(1-x))
+        loss = -(1/n)*torch.sum(targets * np.log(x) + (1-targets) * np.log(1-x))
         return loss
+
+    def save(self, destination):
+        np.save(destination, self.X)
+        # pd.DataFrame(self.X).to_csv(destination, index=False)
 

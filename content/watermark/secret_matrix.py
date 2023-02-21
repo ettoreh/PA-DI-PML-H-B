@@ -53,7 +53,7 @@ def get_watermark_from_text(text: str) -> np.array:
         np.array: array of the text into binary representation
     """
     binary_str = ''.join(format(ord(c), '08b') for c in text)
-    return [int(b) for b in binary_str]
+    return np.array([int(b) for b in binary_str])
 
 def get_text_from_watermark(watermark: np.array) -> str:
     """_summary_
