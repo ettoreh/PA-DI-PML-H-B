@@ -103,7 +103,7 @@ if __name__ == '__main__':
         
     train(
         num_epochs=epoch, model=model.model, model_path=model_path, 
-        dataset=train_data, watermark=watermark, type='direct', size=(T, M), 
+        dataset=train_data, watermark=watermark, type='rand', size=(T, M), 
         matrix_path=matrix_path, la=10, lr=0.001, mom=0.9, device=device
     )
     
