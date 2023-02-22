@@ -15,7 +15,7 @@ def train_one_epoch(
 
         # Forward pass
         outputs = model(images)
-        weights = model.conv1.weight.detach().cpu().numpy()
+        weights = model.conv1.weight.cpu().to(torch.float32)
         
         loss_0 = criterion_0(outputs, labels).to(torch.float32)
         loss_r = criterion_r(weights, watermark).to(torch.float32)
@@ -77,7 +77,7 @@ if __name__ == '__main__':
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     model_path = '/Users/ettorehidoux/Desktop/codes projects/PA-DI-PML-H-B/' 
     matrix_path = model_path + 'models/matrix_' + timestamp +'.npy'
-    model_path = model_path + 'models/' + model + '_' + data + '_' + timestamp
+    model_path = model_path + 'models/' + model + '_' + data + '_wm_' + timestamp
     print(model)
     print(data)
     print(params)

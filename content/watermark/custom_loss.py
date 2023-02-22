@@ -16,11 +16,11 @@ class watermarkCrossEntropyLoss(nn.Module):
 
     def forward(self, weights, targets):
         # Compute the loss function
-        weights = np.mean(weights, 0)
-        x = np.dot(self.X, weights.flatten())
-        x = self.sigmoid(torch.tensor(x))
+        weights = torch.mean(weights, 0)
+        x = torch.matmul(torch.tensor(self.X).double(), weights.flatten().double())
+        x = self.sigmoid(x)
         n = len(targets)
-        loss = -(1/n)*torch.sum(targets * np.log(x) + (1-targets) * np.log(1-x))
+        loss = -(1/n)*torch.sum(targets * torch.log(x) + (1-targets) * torch.log(1-x))
         return loss
 
     def save(self, destination):
