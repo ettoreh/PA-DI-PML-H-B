@@ -9,9 +9,11 @@ from .secret_matrix import get_secret_matrix
 
 
 class watermarkCrossEntropyLoss(nn.Module):
-    def __init__(self, type, size):
+    def __init__(self, type, size, X=None):
         super(watermarkCrossEntropyLoss, self).__init__()
-        self.X = get_secret_matrix(type, size)
+        self.X = X
+        if X is None:
+            self.X = get_secret_matrix(type, size)
         self.sigmoid = nn.Sigmoid()
 
     def forward(self, weights, targets):
@@ -23,7 +25,10 @@ class watermarkCrossEntropyLoss(nn.Module):
         loss = -(1/n)*torch.sum(targets * torch.log(x) + (1-targets) * torch.log(1-x))
         return loss
 
-    def save(self, destination):
-        np.save(destination, self.X)
+    def save(self, path):
+        np.save(path, self.X)
         # pd.DataFrame(self.X).to_csv(destination, index=False)
+        
+    def load(self, path):
+        self.X = np.laod(path)
 

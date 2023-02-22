@@ -63,7 +63,7 @@ if __name__ == '__main__':
     
     from datetime import datetime
     from dataset_loader.datasetLoader import DatasetLoader
-    from networks.networks import Network
+    from neural_networks.networks import Network
     from watermark.secret_matrix import get_watermark_from_text
     
 

@@ -23,14 +23,3 @@ class Net(nn.Module):
         x = self.fc3(x)
         return x
     
-    def train(self, ):
-        # TO DO
-        return None
-    
-    def validation(self):
-        # TO DO
-        return None
-    
-    def eval(self):
-        # TO DO
-        return None
