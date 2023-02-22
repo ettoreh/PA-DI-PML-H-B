@@ -1,7 +1,7 @@
 import torch 
 
-from .mlpNet.Net import Net
-from .wideResNet.WideResNet import WideResNet
+from .newtorks.Net import Net
+from .newtorks.WideResNet import WideResNet
 
     
     
@@ -25,6 +25,7 @@ class Network():
         print('model loaded')
         
     def train(self, num_epoch):
+        
         print('model trained')
     
     def train_wm(self, num_epoch, la):

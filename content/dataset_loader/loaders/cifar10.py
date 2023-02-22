@@ -1,6 +1,7 @@
 import torch
 
 import torchvision
+from torch.utils.data import random_split, DataLoader
 import torchvision.transforms as transforms
 
 import matplotlib.pyplot as plt
@@ -21,7 +22,9 @@ transform = transforms.Compose(
 )
 
 
-def trainset_loader(batch_size: int):
+def trainset_loader(
+    batch_size: int, val_ratio: int, num_workers: int, pin_memory: bool
+    ):
     """
     Args:
         batch_size (int): size of every batch
@@ -32,12 +35,22 @@ def trainset_loader(batch_size: int):
     trainset = torchvision.datasets.CIFAR10(
         root='./data', train=True, download=True, transform=transform
     )
-    trainloader = torch.utils.data.DataLoader(
-        trainset, batch_size=batch_size, shuffle=True, num_workers=2
+    
+    size = len(trainset)
+    train_size = int((1-val_ratio)*size)
+    train_ds, val_ds = random_split(trainset, [train_size, size-train_size])
+    
+    trainloader = DataLoader(
+        train_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers, 
+        pin_memory=pin_memory
     )
-    return trainloader
+    validloader = DataLoader(
+        val_ds, batch_size=batch_size*2, num_workers=num_workers, 
+        pin_memory=pin_memory
+    )
+    return trainloader, validloader
 
-def testset_loader(batch_size: int):
+def testset_loader(batch_size: int, num_workers: int, pin_memory: bool):
     """
     Args:
         batch_size (int): size if every batch
@@ -49,7 +62,8 @@ def testset_loader(batch_size: int):
         root='./data', train=False, download=True, transform=transform
     )
     testloader = torch.utils.data.DataLoader(
-        testset, batch_size=batch_size, shuffle=False, num_workers=2
+        testset, batch_size=batch_size*2, shuffle=False, 
+        num_workers=num_workers, pin_memory=pin_memory
     )
     return testloader
 
@@ -67,7 +81,7 @@ if __name__ == '__main__':
         plt.show()
 
     # get some random training images
-    trainloader = trainset_loader(batch_size)
+    trainloader, validloader = trainset_loader(batch_size, 0.05, 2, False)
     dataiter = iter(trainloader)
     images, labels = next(dataiter)
 

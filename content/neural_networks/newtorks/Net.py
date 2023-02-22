@@ -21,3 +21,15 @@ class Net(nn.Module):
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
         return x
+    
+    def train(self):
+        # TO DO
+        return None
+    
+    def validation(self):
+        # TO DO
+        return None
+    
+    def eval(self):
+        # TO DO
+        return None
