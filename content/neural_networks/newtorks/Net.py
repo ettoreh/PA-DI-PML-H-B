@@ -4,14 +4,15 @@ import torch.nn.functional as F
 
 
 class Net(nn.Module):
-    def __init__(self, num_classes):
+    def __init__(self, num_classes, conv_size=[6, 16], kernel_size=5):
         super().__init__()
-        self.conv1 = nn.Conv2d(3, 6, 5)
+        self.conv1 = nn.Conv2d(3, conv_size[0], kernel_size)
         self.pool = nn.MaxPool2d(2, 2)
-        self.conv2 = nn.Conv2d(6, 16, 5)
-        self.fc1 = nn.Linear(16 * 5 * 5, 120)
-        self.fc2 = nn.Linear(120, 84)
-        self.fc3 = nn.Linear(84, num_classes)
+        self.conv2 = nn.Conv2d(conv_size[0], conv_size[1], kernel_size)
+        flatten_size = conv_size[1] * kernel_size * kernel_size
+        self.fc1 = nn.Linear(flatten_size, int(0.6*flatten_size))
+        self.fc2 = nn.Linear(int(0.6*flatten_size), int(0.36*flatten_size))
+        self.fc3 = nn.Linear(int(0.36*flatten_size), num_classes)
         
     def forward(self, x):
         x = self.pool(F.relu(self.conv1(x)))
@@ -22,7 +23,7 @@ class Net(nn.Module):
         x = self.fc3(x)
         return x
     
-    def train(self):
+    def train(self, ):
         # TO DO
         return None
     
