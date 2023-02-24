@@ -146,8 +146,70 @@ class Network():
         print('Epoch [{}/{}], '.format(1, 3))
         return None
     
+    def _get_model_accuracy(self, data):
+        correct, total = 0, 0
+        with torch.no_grad():
+            for images, labels in data:
+                images, labels = images, labels
+                outputs = self.model(images)
+                _, predicted = torch.max(outputs.data, 1)
+                total += labels.size(0)
+                correct += (predicted == labels).sum().item()
+        return (100 * correct) / total
+    
+    def _get_model_accuracy_per_classes(self, data, classes):
+        correct_pred = {classname: 0 for classname in classes}
+        total_pred = {classname: 0 for classname in classes}
+        percent_pred = {classname: 0 for classname in classes}
+        with torch.no_grad():
+            for images, labels in data:
+                images, labels = images, labels  
+                outputs = net(images)
+                _, predictions = torch.max(outputs, 1)
+                for label, prediction in zip(labels, predictions):
+                    if label == prediction:
+                        correct_pred[classes[label]] += 1
+                    total_pred[classes[label]] += 1
+        
+        for classname, correct_count in correct_pred.items():
+            accuracy = 100 * float(correct_count) / total_pred[classname]
+            percent_pred[classname] = accuracy
+            
+        return percent_pred
     
     def eval(self, testset, verbose=False):
+        acc = self._get_model_accuracy(testset)
+        acc_per_classes = self._get_model_accuracy_per_classes(testset)
+        if verbose:
+            print(f'Accuracy of the network on the 10000 test images: {acc} %')
+            print(f'***')
+            for classname, acc in acc_per_classes.items():
+                print(f'Accuracy for class: {classname:5s} is {acc:.1f} %')
+        return acc, acc_per_classes
+    
+    def fine_tune(self, with_watermark=False, secret_key=None, verbose=False):
+        # TO DO
+        return None
+    
+    def prune(self, verbose=False):
+        # TO DO
+        return None
+    
+    def rewrite(self, verbose=False):
+        # TO DO
+        return None
+    
+    def check_watermark(self):
+        if not self.to_watermark:
+            print("the model isn't watermarked")
+            return None
+        # TO DO
+        return None
+    
+    def get_BER(self):
+        if not self.to_watermark:
+            print("the model isn't watermarked")
+            return None
         # TO DO
         return None
 
