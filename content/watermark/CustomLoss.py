@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 
 import numpy as np
-import pandas as pd
 
 from .secret_matrix import get_secret_matrix
 
@@ -31,5 +30,5 @@ class WatermarkCrossEntropyLoss(nn.Module):
         # pd.DataFrame(self.X).to_csv(destination, index=False)
         
     def load(self, path):
-        self.X = np.laod(path)
+        self.X = np.load(path)
 
