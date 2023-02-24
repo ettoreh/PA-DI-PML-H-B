@@ -9,6 +9,7 @@ from networks.WideResNet import WideResNet
 
 from content.watermark.secret_key import get_random_watermark
 from content.watermark.secret_key import get_watermark_from_text
+from content.watermark.secret_key import get_text_from_watermark
 from content.watermark.CustomLoss import WatermarkCrossEntropyLoss
 
     
@@ -16,6 +17,14 @@ from content.watermark.CustomLoss import WatermarkCrossEntropyLoss
 def accuracy(outputs, labels):
     _, preds = torch.max(outputs, dim=1)
     return torch.tensor(torch.sum(preds == labels).item() / len(preds))
+
+def _generate_logs(epoch, num_epoch, train_loss, val_loss, val_acc, time):
+        trainlog = "Epoch [{}/{}], \t ".format(epoch+1, num_epoch)
+        trainlog += "Train loss: {:.4f}, \t ".format(train_loss)
+        trainlog += "Validation loss: {:.4f}, \t ".format(val_loss)
+        trainlog += "Validation acc: {:.4f}, \t ".format(val_acc)
+        trainlog += "Time: {}".format(time)
+        return trainlog    
 
 
 
@@ -116,11 +125,13 @@ class Network():
         acc = accuracy(out, labels)           
         return loss, acc
     
-    def _train_one_epoch(self, trainset, valideset, verbose=False):
+    def _train_one_epoch(self, trainset, validset, verbose=False):
         start_time = datetime.now()
         
+        training = []
         for i, batch in enumerate(trainset):
             loss = self._train_one_batch(batch=batch)
+            training.append(float(loss))
             loss.backward()
             self.optimizer.step()
             self.optimizer.zero_grad()
@@ -132,19 +143,41 @@ class Network():
                         .format(i+1, len(trainset), loss))
         
         validation = [[], []]
-        for i, batch in enumerate(valideset):    
+        for i, batch in enumerate(validset):    
             loss, acc = self._validation_one_batch(batch)
             validation[0].append(float(loss))
             validation[1].append(float(acc))
         
         time = datetime.now() - start_time
-        return np.mean(validation[0]), np.mean(validation[1]), time
+        return (
+            np.mean(training), np.mean(validation[0]), np.mean(validation[1]),
+            time
+        )
         
-    def train(self, set, epoch, verbose=0):
+    def train(self, set, num_epoch, verbose=0):
+        print("training started")
         trainset, validset = set
-        # TO DO
-        print('Epoch [{}/{}], '.format(1, 3))
-        return None
+        history = []
+        for epoch in range(num_epoch):
+            print("Epoch [{}/{}]".format(epoch+1, num_epoch))
+            train_loss, val_loss, val_acc, time = self._train_one_epoch(
+                trainset=trainset, validset=validset, verbose=(verbose==2)
+            )
+            
+            weights = []
+            if self.to_watermark:
+                weights = self.model.conv1.weight.detach().to(torch.float32)
+                weights = torch.mean(weights, 0)
+                weights = torch.matmul(self.criterion_r.X, weights.flatten())
+                weights = self.criterion_r.sigmoid(weights)
+                weights = (weights.detach().numpy() > 0.5).astype(int)
+            
+            history.append([train_loss, val_loss, val_acc, time, weights])
+            if (verbose > 0):
+                print(_generate_logs(
+                    epoch, num_epoch, train_loss, val_loss, val_acc, time))
+            
+        return np.transpose(history)
     
     def _get_model_accuracy(self, data):
         correct, total = 0, 0
@@ -164,7 +197,7 @@ class Network():
         with torch.no_grad():
             for images, labels in data:
                 images, labels = images, labels  
-                outputs = net(images)
+                outputs = self.model(images)
                 _, predictions = torch.max(outputs, 1)
                 for label, prediction in zip(labels, predictions):
                     if label == prediction:
@@ -187,17 +220,39 @@ class Network():
                 print(f'Accuracy for class: {classname:5s} is {acc:.1f} %')
         return acc, acc_per_classes
     
-    def fine_tune(self, with_watermark=False, secret_key=None, verbose=False):
-        # TO DO
-        return None
+    def fine_tune(
+        self, set, num_epoch, with_watermark=False, secret_key=None, 
+        method='direct', la=10, verbose=0
+    ):
+        if with_watermark:
+            if not self.to_watermark:
+                self.to_watermark = True
+                self._watermark_init(secret_key, method, la)
+        else:
+            self.to_watermark = False
+            
+        history = self.train(set=set, num_epoch=num_epoch, verbose=verbose)
+        
+        return history
     
     def prune(self, verbose=False):
         # TO DO
         return None
     
-    def rewrite(self, verbose=False):
-        # TO DO
-        return None
+    def rewrite(
+        self, set, num_epoch, secret_key=None, method='direct', la=10,
+        verbose=0
+    ):
+        if secret_key is None:
+            secret_key = get_random_watermark(150)
+        if (verbose > 0):
+            print('key: ', get_text_from_watermark(secret_key))
+        self.to_watermark = True 
+        self._watermark_init(secret_key, method, la)
+        
+        history = self.train(set=set, num_epoch=num_epoch, verbose=verbose)
+
+        return history
     
     def check_watermark(self):
         if not self.to_watermark:
@@ -232,7 +287,7 @@ if __name__ == "__main__":
     dataset = DatasetLoader(dataset_name='cifar10', batch_size=8)
     trainset, validset = dataset.get_train_valid_loader()
     
-    values = net._train_one_epoch(trainset, validset, True)
+    values = net.train((trainset, validset), num_epoch=5, verbose=2)
     print(values)
     #net.load_model('models/mlp_cifar10_20230221_104629')
     
