@@ -27,7 +27,10 @@ def get_secret_matrix(type: str, size: tuple) -> np.array:
             x[i][j1] = 1
             x[i][j2] = -1
     
-    if type == "rand":
+    if type == "uni":
         x = np.random.uniform(size=size)
+        
+    if type == "rand":
+        x = np.random.normal(size=size)
         
     return x

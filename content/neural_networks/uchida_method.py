@@ -54,8 +54,8 @@ class Network():
         self.optimizer = torch.optim.Adam(
             self.model.parameters(), 
             lr=self.optimizer_params[0], 
-            #momentum=self.optimizer_params[1], 
-            #nesterov=True
+        #    momentum=self.optimizer_params[1], 
+        #    nesterov=True
         )
         self.to_watermark = to_watermark
         if to_watermark:
@@ -118,7 +118,7 @@ class Network():
             self.watermarked = True
             weights = self.model.conv1.weight.to(torch.float32)
             loss_r = self.criterion_rs[-1](weights, self.secret_keys[-1]) 
-            loss = loss + self.las[-1]*loss_r
+            loss = torch.add(loss, loss_r, alpha=self.las[-1])
 
         # Backward and optimize
         self.optimizer.zero_grad()
@@ -135,7 +135,8 @@ class Network():
         if self.to_watermark:
             weights = self.model.conv1.weight.to(torch.float32)
             loss_r = self.criterion_rs[-1](weights, self.secret_keys[-1]) 
-            loss = loss + self.las[-1]*loss_r
+            loss = torch.add(loss, loss_r, alpha=self.las[-1])
+            
         acc = accuracy(out, labels)           
         return loss, acc
     
@@ -150,7 +151,7 @@ class Network():
             
             if verbose:
                 # if int((10*i) / len(trainset)) % 10 == percent: 
-                if (i % 1000 == 0) or (i+1 == len(trainset)):
+                if (i % 500 == 0) or (i+1 == len(trainset)):
                     print(" - Step [{}/{}] \t Loss: {:.4f} \t BER: {:.4f}"
                         .format(i+1, len(trainset), loss, self.get_BER()))
         
@@ -182,9 +183,7 @@ class Network():
             if (verbose > 0):
                 print(_generate_logs(
                     epoch, num_epoch, train_loss, val_loss, val_acc, time))
-                
-                print(self.get_BER())
-                
+                                
         print('model trained') 
         return history
     
@@ -292,7 +291,7 @@ class Network():
         weights = torch.matmul(self.criterion_rs[-1].X, weights.flatten())
         weights = self.criterion_rs[-1].sigmoid(weights)
         weights = (weights.detach().cpu().numpy() > 0.5).astype(int)
-        return np.mean([weights[i] == self.secret_keys[watermark_number].cpu()[i] for i in range(len(weights))]) 
+        return np.mean([weights[i] != self.secret_keys[watermark_number].cpu()[i] for i in range(len(weights))]) 
 
     
 
@@ -302,30 +301,31 @@ if __name__ == "__main__":
     from content.dataset_loader.datasetLoader import DatasetLoader
     
     model_name = 'net'
-    params = [10, [20, 50], 5]
-    print(model_name, params)
+    params = [10, [6, 16], 5]
+    # print(model_name, params)
     
+    # secret_key='Copyright from Ettore Hidoux',
     net = Network(
         model_name=model_name, model_params=params, 
         optimizer_params=[0.001, 0.9], 
-        to_watermark=True, secret_key='Ettore Hidoux', method="rand", la=10,
+        to_watermark=True, secret_key='Ettore Hidoux', method="rand", la=5,
         device='mps'
     )
     
-    print(len(net.secret_keys[-1]), net.conv1_size, net.criterion_rs[-1].X.shape)
-    print(net.methods[-1])
+    # print(len(net.secret_keys[-1]), net.conv1_size, net.criterion_rs[-1].X.shape)
+    # print(net.methods[-1])
     
-    print(net.secret_keys[0].cpu())
-    print(net.criterion_rs[0].X.cpu())
+    # print(net.secret_keys[0].cpu())
+    # print(net.criterion_rs[0].X.cpu())
     
-    dataset = DatasetLoader(dataset_name='cifar10', batch_size=8)
+    dataset = DatasetLoader(dataset_name='cifar10', batch_size=32)
     trainset, validset = dataset.get_train_valid_loader()
     
     values = net.train((trainset, validset), num_epoch=3, verbose=2)
     # print(values)
     
     print(net.check_watermark())
-    print(net.get_BER())
+    # print(net.get_BER())
     
     #net.load_model('models/mlp_cifar10_20230221_104629')
     
