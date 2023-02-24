@@ -140,14 +140,14 @@ class Network():
         time = datetime.now() - start_time
         return np.mean(validation[0]), np.mean(validation[1]), time
         
-    def train(self, set, epoch):
+    def train(self, set, epoch, verbose=0):
         trainset, validset = set
         # TO DO
         print('Epoch [{}/{}], '.format(1, 3))
         return None
     
     
-    def eval(self, testset):
+    def eval(self, testset, verbose=False):
         # TO DO
         return None
 
