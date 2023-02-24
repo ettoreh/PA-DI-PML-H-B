@@ -4,23 +4,26 @@ import torchvision
 from torch.utils.data import random_split, DataLoader
 import torchvision.transforms as transforms
 
+import matplotlib.pyplot as plt
+import numpy as np
 
 
-# list of classes' names in the cifar dataset
+
+# list of classes' names in the mnist dataset
 classes = (
-    'plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 
-    'truck'
+    'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 
+    'nine'
 )
 
 # define the transformation to apply to each image before the network
 transform = transforms.Compose(
-    [transforms.ToTensor(),
-     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
+    [transforms.ToTensor(), 
+     transforms.Normalize((0.5,), (1.0,))]
 )
 
 
 def trainset_loader(
-    batch_size: int, val_ratio: int, num_workers: int, pin_memory: bool
+    batch_size: int, val_ratio: float, num_workers: int, pin_memory: bool
     ):
     """_summary_
 
@@ -33,7 +36,7 @@ def trainset_loader(
     Returns:
         _type_: the dataset to eval the model on
     """
-    trainset = torchvision.datasets.CIFAR10(
+    trainset = torchvision.datasets.MNIST(
         root='./data', train=True, download=True, transform=transform
     )
     
@@ -62,7 +65,7 @@ def testset_loader(batch_size: int, num_workers: int, pin_memory: bool):
     Returns:
         _type_: the dataset to eval the model on
     """
-    testset = torchvision.datasets.CIFAR10(
+    testset = torchvision.datasets.MNIST(
         root='./data', train=False, download=True, transform=transform
     )
     testloader = torch.utils.data.DataLoader(
@@ -80,9 +83,10 @@ if __name__ == '__main__':
     
     
     batch_size = 4
-
+    
     # functions to show an image
     def imshow(img):
+        img = img / 2 + 0.5     # unnormalize
         npimg = img.numpy()
         plt.imshow(np.transpose(npimg, (1, 2, 0)))
         plt.show()

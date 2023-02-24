@@ -1,4 +1,5 @@
 from .loaders import cifar10 
+from .loaders import mnist
 
 
 class DatasetLoader():
@@ -16,6 +17,7 @@ class DatasetLoader():
         self.pin_memory = pin_memory
         self.dataset_list = {
             'cifar10': cifar10,
+            'mnist': mnist,
         }
         self.dataset = self.dataset_list[self.dataset_name]
         self.classes = self.dataset.classes
