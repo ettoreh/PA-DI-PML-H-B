@@ -9,7 +9,7 @@ from networks.WideResNet import WideResNet
 
 from content.watermark.secret_key import get_random_watermark
 from content.watermark.secret_key import get_watermark_from_text
-from content.watermark.custom_loss import watermarkCrossEntropyLoss
+from content.watermark.CustomLoss import WatermarkCrossEntropyLoss
 
     
     
@@ -72,7 +72,7 @@ class Network():
             dtype=torch.float32, 
             device=self.device
         )
-        self.criterion_r = watermarkCrossEntropyLoss(
+        self.criterion_r = WatermarkCrossEntropyLoss(
             type=method, 
             size=(self.secret_key_size, self.conv1_size), 
             device=self.device
