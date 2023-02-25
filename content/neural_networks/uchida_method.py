@@ -1,5 +1,7 @@
 import torch 
 import torch.nn as nn
+import torch.nn.utils.prune as prune
+
 import numpy as np
 
 from datetime import datetime
@@ -25,6 +27,24 @@ def _generate_logs(epoch, num_epoch, train_loss, val_loss, val_acc, time):
         trainlog += "Validation acc: {:.4f}, \t ".format(val_acc)
         trainlog += "Time: {}".format(time)
         return trainlog    
+    
+def _get_sparsity(layer):
+        return 100. * float(torch.sum(layer == 0)) / float(layer.nelement())
+    
+def _get_global_sparsity(layers):
+    return 100. * float(
+        torch.sum(layers[0][0].weight == 0)
+        + torch.sum(layers[1][0].weight == 0)
+        + torch.sum(layers[2][0].weight == 0)
+        + torch.sum(layers[3][0].weight == 0)
+        + torch.sum(layers[4][0].weight == 0)
+    ) / float(
+        layers[0][0].weight.nelement()
+        + layers[1][0].weight.nelement()
+        + layers[2][0].weight.nelement()
+        + layers[3][0].weight.nelement()
+        + layers[4][0].weight.nelement()
+    )
 
 
 
@@ -246,9 +266,37 @@ class Network():
         print('model fine-tuned')
         return history
     
-    def prune(self, verbose=False):
-        # TO DO
-        return None
+    def prune(self, pruning_ratio, verbose=False):
+        parameters_to_prune = (
+            (self.model.conv1, 'weight'),
+            (self.model.conv2, 'weight'),
+            (self.model.fc1, 'weight'),
+            (self.model.fc2, 'weight'),
+            (self.model.fc3, 'weight'),
+        )
+
+        prune.global_unstructured(
+            parameters_to_prune,
+            pruning_method=prune.L1Unstructured,
+            amount=pruning_ratio,
+        )
+        
+        conv1_sparsity = _get_sparsity(parameters_to_prune[0][0].weight)
+        conv2_sparsity = _get_sparsity(parameters_to_prune[1][0].weight)
+        fc1_sparsity = _get_sparsity(parameters_to_prune[2][0].weight)
+        fc2_sparsity = _get_sparsity(parameters_to_prune[3][0].weight)
+        fc3_sparsity = _get_sparsity(parameters_to_prune[4][0].weight)
+        global_sparsity = _get_global_sparsity(parameters_to_prune)
+        if verbose:
+            print("Sparsity in conv1.weight: {:.2f}%".format(conv1_sparsity))
+            print("Sparsity in conv2.weight: {:.2f}%".format(conv2_sparsity))
+            print("Sparsity in fc1.weight: {:.2f}%".format(fc1_sparsity))
+            print("Sparsity in fc2.weight: {:.2f}%".format(fc2_sparsity))
+            print("Sparsity in fc3.weight: {:.2f}%".format(fc3_sparsity))
+            print("Global sparsity: {:.2f}%".format(global_sparsity))
+        
+        return (conv1_sparsity, conv2_sparsity, fc1_sparsity, fc2_sparsity, 
+                fc3_sparsity, global_sparsity)
     
     def rewrite(
         self, set, num_epoch, secret_key=None, method='direct', la=10,
