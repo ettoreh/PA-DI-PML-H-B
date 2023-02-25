@@ -190,6 +190,7 @@ class Network():
         acc = accuracy(out, labels)           
         return loss, acc
     
+    # Same, To move
     def _train_one_epoch(self, trainset, validset, verbose=False):
         start_time = datetime.now()
         
@@ -217,7 +218,143 @@ class Network():
             time
         )
         
+    # Same, To move
+    def train(self, set, num_epoch, verbose=0):
+        print("training started")
+        trainset, validset = set
+        history = []
+        for epoch in range(num_epoch):
+            print("Epoch [{}/{}]".format(epoch+1, num_epoch))
+            
+            self.model.train(True)
+            train_loss, val_loss, val_acc, time = self._train_one_epoch(
+                trainset=trainset, validset=validset, verbose=(verbose==2)
+            )
+            
+            history.append([train_loss, val_loss, val_acc, time])
+            if (verbose > 0):
+                print(_generate_logs(
+                    epoch, num_epoch, train_loss, val_loss, val_acc, time))
+                                
+        print('model trained') 
+        return history
+    
+    # Same, To move
+    def _get_model_accuracy(self, data):
+        correct, total = 0, 0
+        with torch.no_grad():
+            for images, labels in data:
+                images, labels = images, labels
+                outputs = self.model(images)
+                _, predicted = torch.max(outputs.data, 1)
+                total += labels.size(0)
+                correct += (predicted == labels).sum().item()
+        return (100 * correct) / total
+    
+    # Same, To move
+    def _get_model_accuracy_per_classes(self, data, classes):
+        correct_pred = {classname: 0 for classname in classes}
+        total_pred = {classname: 0 for classname in classes}
+        percent_pred = {classname: 0 for classname in classes}
+        with torch.no_grad():
+            for images, labels in data:
+                images, labels = images, labels  
+                outputs = self.model(images)
+                _, predictions = torch.max(outputs, 1)
+                for label, prediction in zip(labels, predictions):
+                    if label == prediction:
+                        correct_pred[classes[label]] += 1
+                    total_pred[classes[label]] += 1
         
+        for classname, correct_count in correct_pred.items():
+            accuracy = 100 * float(correct_count) / total_pred[classname]
+            percent_pred[classname] = accuracy
+            
+        return percent_pred
+    
+    # Same, To move
+    def eval(self, testset, verbose=False):
+        acc = self._get_model_accuracy(testset)
+        acc_per_classes = self._get_model_accuracy_per_classes(testset)
+        if verbose:
+            print(f'Accuracy of the network on the 10000 test images: {acc} %')
+            print(f'***')
+            for classname, acc in acc_per_classes.items():
+                print(f'Accuracy for class: {classname:5s} is {acc:.1f} %')
+                
+        print('model evaluated')
+        return acc, acc_per_classes
+    
+    # Almost same, To move
+    def fine_tune(
+        self, set, num_epoch, with_watermark=False, secret_key=None, 
+        method='direct', l1=10, l2=5, verbose=0
+    ):
+        if with_watermark:
+            if not self.watermarked:
+                self.to_watermark = True
+                self._init_watermark()
+            self._add_watermark(secret_key, method, l1, l2)
+        else:
+            self.to_watermark = False
+            
+        history = self.train(set=set, num_epoch=num_epoch, verbose=verbose)
+        print('model fine-tuned')
+        return history
+    
+    # Same, To move
+    def prune(self, pruning_ratio, verbose=False):
+        parameters_to_prune = (
+            (self.model.conv1, 'weight'),
+            (self.model.conv2, 'weight'),
+            (self.model.fc1, 'weight'),
+            (self.model.fc2, 'weight'),
+            (self.model.fc3, 'weight'),
+        )
+
+        prune.global_unstructured(
+            parameters_to_prune,
+            pruning_method=prune.L1Unstructured,
+            amount=pruning_ratio,
+        )
+        
+        conv1_sparsity = _get_sparsity(parameters_to_prune[0][0].weight)
+        conv2_sparsity = _get_sparsity(parameters_to_prune[1][0].weight)
+        fc1_sparsity = _get_sparsity(parameters_to_prune[2][0].weight)
+        fc2_sparsity = _get_sparsity(parameters_to_prune[3][0].weight)
+        fc3_sparsity = _get_sparsity(parameters_to_prune[4][0].weight)
+        global_sparsity = _get_global_sparsity(parameters_to_prune)
+        if verbose:
+            print("Sparsity in conv1.weight: {:.2f}%".format(conv1_sparsity))
+            print("Sparsity in conv2.weight: {:.2f}%".format(conv2_sparsity))
+            print("Sparsity in fc1.weight: {:.2f}%".format(fc1_sparsity))
+            print("Sparsity in fc2.weight: {:.2f}%".format(fc2_sparsity))
+            print("Sparsity in fc3.weight: {:.2f}%".format(fc3_sparsity))
+            print("Global sparsity: {:.2f}%".format(global_sparsity))
+        
+        return (conv1_sparsity, conv2_sparsity, fc1_sparsity, fc2_sparsity, 
+                fc3_sparsity, global_sparsity)
+    
+    # Almost same, To move
+    def rewrite(
+        self, set, num_epoch, secret_key=None, method='direct', l1=10, l2=5,
+        verbose=0
+    ):
+        if not self.watermarked:
+            print("the model isn't watermarked")
+            return None
+        if secret_key is None:
+            secret_key = get_random_watermark(150)
+        if (verbose > 0):
+            print('key: ', get_text_from_watermark(secret_key))
+        self.to_watermark = True 
+        self._add_watermark(secret_key, method, l1, l2)
+        
+        history = self.train(set=set, num_epoch=num_epoch, verbose=verbose)
+        print('watermark rewritted')
+        return history
+        
+    # Same, To move
     def check_watermark(self):
         if not self.watermarked:
             print("the model isn't watermarked")
@@ -231,6 +368,7 @@ class Network():
         print(weights)
         return get_text_from_watermark(weights)
     
+    # Same, To move
     def get_BER(self, watermark_number=0):
         if not self.watermarked:
             print("the model isn't watermarked")
