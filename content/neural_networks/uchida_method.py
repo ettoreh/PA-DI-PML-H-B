@@ -318,7 +318,7 @@ if __name__ == "__main__":
     # print(net.secret_keys[0].cpu())
     # print(net.criterion_rs[0].X.cpu())
     
-    dataset = DatasetLoader(dataset_name='cifar10', batch_size=32)
+    dataset = DatasetLoader(dataset_name='cifar10', batch_size=32, num_workers=4, pin_memory=True)
     trainset, validset = dataset.get_train_valid_loader()
     
     values = net.train((trainset, validset), num_epoch=3, verbose=2)

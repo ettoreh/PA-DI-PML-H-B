@@ -31,6 +31,6 @@ def get_secret_matrix(type: str, size: tuple) -> np.array:
         x = np.random.uniform(size=size)
         
     if type == "rand":
-        x = np.random.normal(size=size)
+        x = np.random.normal(0, 1, size=size)
         
     return x

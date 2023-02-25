@@ -21,8 +21,7 @@ class WatermarkCrossEntropyLoss(nn.Module):
         weights = torch.mean(weights, 0)
         x = torch.matmul(self.X, weights.flatten())
         x = self.sigmoid(x)
-        n = len(targets)
-        loss = -(1/n)*torch.sum(targets * torch.log(x) + (1-targets) * torch.log(1-x))
+        loss = -torch.mean(targets * torch.log(x) + (1-targets) * torch.log(1-x))
         return loss
 
     def save(self, path):
