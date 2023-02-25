@@ -413,8 +413,10 @@ if __name__ == "__main__":
     dataset = DatasetLoader(dataset_name='cifar10', batch_size=32, num_workers=4, pin_memory=True)
     trainset, validset = dataset.get_train_valid_loader()
     
-    values = net._train_one_epoch(trainset, validset, verbose=True)
-    print(values)
+    # values = net._train_one_epoch(trainset, validset, verbose=True)
+    # print(values)
+    
+    values = net.train((trainset, validset), num_epoch=3, verbose=2)
     
     print(net.check_watermark())
     
