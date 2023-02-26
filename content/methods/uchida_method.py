@@ -9,42 +9,13 @@ from datetime import datetime
 from networks.Net import Net
 from networks.WideResNet import WideResNet
 
+from utils.metrics import *
+from utils.logs import *
+
 from content.watermark.secret_key import get_random_watermark
 from content.watermark.secret_key import get_watermark_from_text
 from content.watermark.secret_key import get_text_from_watermark
 from content.watermark.CustomLoss import WatermarkCrossEntropyLoss
-
-    
-    
-def accuracy(outputs, labels):
-    _, preds = torch.max(outputs, dim=1)
-    return torch.tensor(torch.sum(preds == labels).item() / len(preds))
-
-def _generate_logs(epoch, num_epoch, train_loss, val_loss, val_acc, time):
-        trainlog = "Epoch [{}/{}], \t ".format(epoch+1, num_epoch)
-        trainlog += "Train loss: {:.4f}, \t ".format(train_loss)
-        trainlog += "Validation loss: {:.4f}, \t ".format(val_loss)
-        trainlog += "Validation acc: {:.4f}, \t ".format(val_acc)
-        trainlog += "Time: {}".format(time)
-        return trainlog    
-    
-def _get_sparsity(layer):
-        return 100. * float(torch.sum(layer == 0)) / float(layer.nelement())
-    
-def _get_global_sparsity(layers):
-    return 100. * float(
-        torch.sum(layers[0][0].weight == 0)
-        + torch.sum(layers[1][0].weight == 0)
-        + torch.sum(layers[2][0].weight == 0)
-        + torch.sum(layers[3][0].weight == 0)
-        + torch.sum(layers[4][0].weight == 0)
-    ) / float(
-        layers[0][0].weight.nelement()
-        + layers[1][0].weight.nelement()
-        + layers[2][0].weight.nelement()
-        + layers[3][0].weight.nelement()
-        + layers[4][0].weight.nelement()
-    )
 
 
 
@@ -157,7 +128,7 @@ class Network():
             loss_r = self.criterion_rs[-1](weights, self.secret_keys[-1]) 
             loss = torch.add(loss, loss_r, alpha=self.las[-1])
             
-        acc = accuracy(out, labels)           
+        acc = get_accuracy(out, labels)           
         return loss, acc
     
     def _train_one_epoch(self, trainset, validset, verbose=False):
@@ -172,9 +143,11 @@ class Network():
             if verbose:
                 # if int((10*i) / len(trainset)) % 10 == percent: 
                 if (i % 500 == 0) or (i+1 == len(trainset)):
-                    print(" - Step [{}/{}] \t Loss: {:.4f} \t BER: {:.4f}"
-                        .format(i+1, len(trainset), loss, self.get_BER()))
-        
+                    ber = 0
+                    if self.watermarked:
+                        ber = self.get_BER()
+                    get_step_logs(i, len(trainset), loss, ber)
+            
         validation = [[], []]
         for i, batch in enumerate(validset):    
             loss, acc = self._validation_one_batch(batch)
@@ -201,51 +174,21 @@ class Network():
             
             history.append([train_loss, val_loss, val_acc, time])
             if (verbose > 0):
-                print(_generate_logs(
-                    epoch, num_epoch, train_loss, val_loss, val_acc, time))
+                ber = 0
+                if self.watermarked:
+                    ber = self.get_BER()    
+                get_epoch_logs(
+                    epoch, num_epoch, train_loss, val_loss, val_acc, time, ber
+                )
                                 
         print('model trained') 
         return history
     
-    def _get_model_accuracy(self, data):
-        correct, total = 0, 0
-        with torch.no_grad():
-            for images, labels in data:
-                images, labels = images, labels
-                outputs = self.model(images)
-                _, predicted = torch.max(outputs.data, 1)
-                total += labels.size(0)
-                correct += (predicted == labels).sum().item()
-        return (100 * correct) / total
-    
-    def _get_model_accuracy_per_classes(self, data, classes):
-        correct_pred = {classname: 0 for classname in classes}
-        total_pred = {classname: 0 for classname in classes}
-        percent_pred = {classname: 0 for classname in classes}
-        with torch.no_grad():
-            for images, labels in data:
-                images, labels = images, labels  
-                outputs = self.model(images)
-                _, predictions = torch.max(outputs, 1)
-                for label, prediction in zip(labels, predictions):
-                    if label == prediction:
-                        correct_pred[classes[label]] += 1
-                    total_pred[classes[label]] += 1
-        
-        for classname, correct_count in correct_pred.items():
-            accuracy = 100 * float(correct_count) / total_pred[classname]
-            percent_pred[classname] = accuracy
-            
-        return percent_pred
-    
     def eval(self, testset, verbose=False):
-        acc = self._get_model_accuracy(testset)
-        acc_per_classes = self._get_model_accuracy_per_classes(testset)
+        acc = get_model_accuracy(self.model, testset)
+        acc_per_classes = get_model_accuracy_per_classes(self.model, testset)
         if verbose:
-            print(f'Accuracy of the network on the 10000 test images: {acc} %')
-            print(f'***')
-            for classname, acc in acc_per_classes.items():
-                print(f'Accuracy for class: {classname:5s} is {acc:.1f} %')
+            get_eval_logs(acc, acc_per_classes)
                 
         print('model evaluated')
         return acc, acc_per_classes
@@ -268,11 +211,11 @@ class Network():
     
     def prune(self, pruning_ratio, verbose=False):
         parameters_to_prune = (
-            (self.model.conv1, 'weight'),
-            (self.model.conv2, 'weight'),
-            (self.model.fc1, 'weight'),
-            (self.model.fc2, 'weight'),
-            (self.model.fc3, 'weight'),
+            (self.model.conv1, 'conv1.weight'),
+            (self.model.conv2, 'conv2.weight'),
+            (self.model.fc1, 'fc1.weight'),
+            (self.model.fc2, 'fc2.weight'),
+            (self.model.fc3, 'fc3.weight'),
         )
 
         prune.global_unstructured(
@@ -281,22 +224,12 @@ class Network():
             amount=pruning_ratio,
         )
         
-        conv1_sparsity = _get_sparsity(parameters_to_prune[0][0].weight)
-        conv2_sparsity = _get_sparsity(parameters_to_prune[1][0].weight)
-        fc1_sparsity = _get_sparsity(parameters_to_prune[2][0].weight)
-        fc2_sparsity = _get_sparsity(parameters_to_prune[3][0].weight)
-        fc3_sparsity = _get_sparsity(parameters_to_prune[4][0].weight)
-        global_sparsity = _get_global_sparsity(parameters_to_prune)
+        layer_sparsity = [get_sparsity(l[0]) for l in parameters_to_prune]
+        global_sparsity = get_global_sparsity(parameters_to_prune)
         if verbose:
-            print("Sparsity in conv1.weight: {:.2f}%".format(conv1_sparsity))
-            print("Sparsity in conv2.weight: {:.2f}%".format(conv2_sparsity))
-            print("Sparsity in fc1.weight: {:.2f}%".format(fc1_sparsity))
-            print("Sparsity in fc2.weight: {:.2f}%".format(fc2_sparsity))
-            print("Sparsity in fc3.weight: {:.2f}%".format(fc3_sparsity))
-            print("Global sparsity: {:.2f}%".format(global_sparsity))
+            get_prune_logs(layer_sparsity, global_sparsity, parameters_to_prune)
         
-        return (conv1_sparsity, conv2_sparsity, fc1_sparsity, fc2_sparsity, 
-                fc3_sparsity, global_sparsity)
+        return (layer_sparsity, global_sparsity)
     
     def rewrite(
         self, set, num_epoch, secret_key=None, method='direct', la=10,
@@ -310,36 +243,37 @@ class Network():
         if (verbose > 0):
             print('key: ', get_text_from_watermark(secret_key))
         self.to_watermark = True 
-        self._add_watermark(secret_key, method, la, rewrite=True)
+        self._add_watermark(secret_key, method, la)
         
         history = self.train(set=set, num_epoch=num_epoch, verbose=verbose)
         print('watermark rewritted')
         return history
     
-    def check_watermark(self):
+    def get_watermark(self, number=0):
         if not self.watermarked:
             print("the model isn't watermarked")
             return None
         
         weights = self.model.conv1.weight.detach().to(torch.float32)
-        weights = torch.mean(weights, 0)
-        weights = torch.matmul(self.criterion_rs[-1].X, weights.flatten())
-        weights = self.criterion_rs[-1].sigmoid(weights)
-        weights = (weights.detach().cpu().numpy() > 0.5).astype(int)
-        print(weights)
-        return get_text_from_watermark(weights)
+        return get_watermark(weights, self.criterion_rs[number].X)
     
-    def get_BER(self, watermark_number=0):
+    def check_watermark(self, number=0):
         if not self.watermarked:
             print("the model isn't watermarked")
             return None
         
         weights = self.model.conv1.weight.detach().to(torch.float32)
-        weights = torch.mean(weights, 0)
-        weights = torch.matmul(self.criterion_rs[-1].X, weights.flatten())
-        weights = self.criterion_rs[-1].sigmoid(weights)
-        weights = (weights.detach().cpu().numpy() > 0.5).astype(int)
-        return np.mean([weights[i] != self.secret_keys[watermark_number].cpu()[i] for i in range(len(weights))]) 
+        return check_watermark(weights, self.criterion_rs[number].X)
+    
+    def get_BER(self, number=0):
+        if not self.watermarked:
+            print("the model isn't watermarked")
+            return None
+        
+        weights = self.model.conv1.weight.detach().to(torch.float32)
+        return get_BER(
+            weights, self.criterion_rs[number].X, self.secret_keys[number].cpu()
+        )
 
     
 
