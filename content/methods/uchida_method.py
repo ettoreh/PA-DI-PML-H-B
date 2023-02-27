@@ -25,9 +25,9 @@ class Network():
     """
     def __init__(
         self, model_name, model_params, 
-        optimizer_params=[0.01, 0.9], 
-        to_watermark=False, secret_key=None, method="direct", la=10,
-        device='cpu'
+        optimizer, optimizer_params, 
+        layers_to_watermark, secret_key, method, la,
+        device
     ) -> None:
         self.model_name = model_name
         self.model_params = model_params
@@ -41,31 +41,41 @@ class Network():
         
         self.model = self.model_list[self.model_name](*model_params).to(device)
         self.criterion_0 = nn.CrossEntropyLoss()
-        # self.optimizer = torch.optim.SGD(
-        self.optimizer = torch.optim.Adam(
-            self.model.parameters(), 
-            lr=self.optimizer_params[0], 
-        #    momentum=self.optimizer_params[1], 
-        #    nesterov=True
-        )
-        self.to_watermark = to_watermark
-        if to_watermark:
-            self._init_watermark()
+        
+        if optimizer == 'sgd':
+            self.optimizer = torch.optim.SGD(
+                self.model.parameters(),
+                lr=self.optimizer_params[0],
+                momentum=self.optimizer_params[1], 
+                nesterov=True
+            )
+        else:
+            self.optimizer = torch.optim.Adam(
+                self.model.parameters(), 
+                lr=self.optimizer_params[0]
+            )
+            
+        self.layers_to_watermark = layers_to_watermark
+        self._init_watermark()
+        if len(layers_to_watermark) > 0:
             self._add_watermark(secret_key, method, la)
         pass
     
     def _init_watermark(self):
+        self.to_watermark = False
         self.methods = []
         self.las = []
         self.secret_keys = []
-        self.conv1_size = len(
-            np.mean(
-                self.model.conv1.weight.detach().cpu().numpy(), 0).flatten()
-        )
+        self.layer_sizes = {}
+        for name, layer in self.model.layers.items():
+            self.layer_sizes[name] = len(
+                np.mean(layer.weight.detach().cpu().numpy(), 0).flatten()
+            )
         self.criterion_rs = []
         print('watermark initiated')
         
     def _add_watermark(self, secret_key, method, la):
+        self.to_watermark = True
         self.methods.append(method)
         self.las.append(la)
         if secret_key is None:
@@ -77,12 +87,15 @@ class Network():
             dtype=torch.float32, 
             device=self.device
         ))
-        self.criterion_rs.append(WatermarkCrossEntropyLoss(
-            type=method, 
-            size=(len(secret_key), self.conv1_size), 
-            device=self.device
-        ))
-        print('watermark added')
+        criterion_r_per_layer = {}
+        for name in self.layers_to_watermark:
+            criterion_r_per_layer[name] = WatermarkCrossEntropyLoss(
+                type=method, 
+                size=(len(secret_key), self.layer_sizes[name]), 
+                device=self.device
+            )
+        self.criterion_rs.append(criterion_r_per_layer)
+        print('watermark parameters added')
     
     def load_model(self, model_path):
         self.model.load_state_dict(torch.load(model_path))
@@ -92,12 +105,12 @@ class Network():
         torch.save(self.model.state_dict(), model_path)
         print('model saved')
     
-    def load_matrix(self, matrix_path, watermark_number=-1):
-        self.criterion_rs[watermark_number].load(matrix_path)
+    def load_matrix(self, matrix_path, watermark_number=-1, layer_name='conv1'):
+        self.criterion_rs[watermark_number][layer_name].load(matrix_path)
         print('matrix loaded')
         
-    def save_matrix(self, matrix_path, watermark_number=0):
-        self.criterion_rs[watermark_number].save(matrix_path)
+    def save_matrix(self, matrix_path, watermark_number=0, layer_name='conv1'):
+        self.criterion_rs[watermark_number][layer_name].save(matrix_path)
         print('matrix saved')
         
     def _train_one_batch(self, batch):
@@ -107,9 +120,10 @@ class Network():
         loss = self.criterion_0(out, labels)
         if self.to_watermark:
             self.watermarked = True
-            weights = self.model.conv1.weight.to(torch.float32)
-            loss_r = self.criterion_rs[-1](weights, self.secret_keys[-1]) 
-            loss = torch.add(loss, loss_r, alpha=self.las[-1])
+            for name in self.layers_to_watermark:
+                weights = self.get_weights(name)
+                loss_r = self.criterion_rs[-1][name](weights, self.secret_keys[-1]) 
+                loss = torch.add(loss, loss_r, alpha=self.las[-1])
 
         # Backward and optimize
         self.optimizer.zero_grad()
@@ -124,9 +138,10 @@ class Network():
         out = self.model(images)
         loss = self.criterion_0(out, labels)
         if self.to_watermark:
-            weights = self.model.conv1.weight.to(torch.float32)
-            loss_r = self.criterion_rs[-1](weights, self.secret_keys[-1]) 
-            loss = torch.add(loss, loss_r, alpha=self.las[-1])
+            for name in self.layers_to_watermark:
+                weights = self.get_weights(name)
+                loss_r = self.criterion_rs[-1][name](weights, self.secret_keys[-1]) 
+                loss = torch.add(loss, loss_r, alpha=self.las[-1])
             
         acc = get_accuracy(out, labels)           
         return loss, acc
@@ -143,9 +158,9 @@ class Network():
             if verbose:
                 # if int((10*i) / len(trainset)) % 10 == percent: 
                 if (i % 500 == 0) or (i+1 == len(trainset)):
-                    ber = 0
+                    ber = []
                     if self.watermarked:
-                        ber = self.get_BER()
+                        ber = [self.get_BER(name) for name in self.layers_to_watermark]
                     get_step_logs(i, len(trainset), loss, ber)
             
         validation = [[], []]
@@ -157,7 +172,7 @@ class Network():
         time = datetime.now() - start_time
         return (
             np.mean(training), np.mean(validation[0]), np.mean(validation[1]),
-            time
+            str(time).split(".")[0]
         )
         
     def train(self, set, num_epoch, verbose=0):
@@ -174,9 +189,9 @@ class Network():
             
             history.append([train_loss, val_loss, val_acc, time])
             if (verbose > 0):
-                ber = 0
+                ber = []
                 if self.watermarked:
-                    ber = self.get_BER()    
+                    ber = [self.get_BER(name) for name in self.layers_to_watermark]  
                 get_epoch_logs(
                     epoch, num_epoch, train_loss, val_loss, val_acc, time, ber
                 )
@@ -194,12 +209,12 @@ class Network():
         return acc, acc_per_classes
     
     def fine_tune(
-        self, set, num_epoch, with_watermark=False, secret_key=None, 
+        self, set, num_epoch, layers_to_watermark=[], secret_key=None, 
         method='direct', la=10, verbose=0
     ):
-        if with_watermark:
+        if len(layers_to_watermark) > 0:
+            self.layers_to_watermark = layers_to_watermark
             if not self.watermarked:
-                self.to_watermark = True
                 self._init_watermark()
             self._add_watermark(secret_key, method, la)
         else:
@@ -210,19 +225,20 @@ class Network():
         return history
     
     def prune(self, pruning_ratio, verbose=False):
-        parameters_to_prune = (
-            (self.model.conv1, 'conv1.weight'),
-            (self.model.conv2, 'conv2.weight'),
-            (self.model.fc1, 'fc1.weight'),
-            (self.model.fc2, 'fc2.weight'),
-            (self.model.fc3, 'fc3.weight'),
-        )
+        parameters_to_prune = self.model.prune_layers
 
-        prune.global_unstructured(
-            parameters_to_prune,
-            pruning_method=prune.L1Unstructured,
-            amount=pruning_ratio,
-        )
+        # prune.global_unstructured(
+        #     parameters_to_prune,
+        #     pruning_method=prune.L1Unstructured,
+        #     amount=pruning_ratio,
+        # )
+        for name, module in parameters_to_prune:
+            # prune 20% of connections in all 2D-conv layers
+            if isinstance(module, torch.nn.Conv2d):
+                prune.l1_unstructured(module, name=name, amount=pruning_ratio)
+            # prune 40% of connections in all linear layers
+            elif isinstance(module, torch.nn.Linear):
+                prune.l1_unstructured(module, name=name, amount=pruning_ratio)
         
         layer_sparsity = [get_sparsity(l[0]) for l in parameters_to_prune]
         global_sparsity = get_global_sparsity(parameters_to_prune)
@@ -243,36 +259,44 @@ class Network():
         if (verbose > 0):
             print('key: ', get_text_from_watermark(secret_key))
         self.to_watermark = True 
+        self.layers_to_watermark['conv1', 'conv2', 'fc1', 'fc2', 'fc3']
         self._add_watermark(secret_key, method, la)
         
         history = self.train(set=set, num_epoch=num_epoch, verbose=verbose)
         print('watermark rewritted')
         return history
     
-    def get_watermark(self, number=0):
-        if not self.watermarked:
-            print("the model isn't watermarked")
-            return None
-        
-        weights = self.model.conv1.weight.detach().to(torch.float32)
-        return get_watermark(weights, self.criterion_rs[number].X)
+    def get_weights(self, name, detach=False):
+        if detach:
+            return self.model.layers[name].weight.detach().to(torch.float32)
+        return self.model.layers[name].weight.to(torch.float32)
     
-    def check_watermark(self, number=0):
+    def get_watermark(self, layer_name, matrix_number=-1,):
         if not self.watermarked:
             print("the model isn't watermarked")
             return None
         
-        weights = self.model.conv1.weight.detach().to(torch.float32)
-        return check_watermark(weights, self.criterion_rs[number].X)
+        weights = self.get_weights(layer_name, detach=True)
+        return get_watermark(weights, self.criterion_rs[matrix_number][layer_name].X)
     
-    def get_BER(self, number=0):
+    def check_watermark(self, layer_name, matrix_number=-1,):
         if not self.watermarked:
             print("the model isn't watermarked")
             return None
         
-        weights = self.model.conv1.weight.detach().to(torch.float32)
+        weights = self.get_weights(layer_name, detach=True)
+        return check_watermark(weights, self.criterion_rs[matrix_number][layer_name].X)
+    
+    def get_BER(self, layer_name, matrix_number=-1, key_number=0):
+        if not self.watermarked:
+            print("the model isn't watermarked")
+            return None
+        
+        weights = self.get_weights(layer_name, detach=True)
         return get_BER(
-            weights, self.criterion_rs[number].X, self.secret_keys[number].cpu()
+            weights, 
+            self.criterion_rs[matrix_number][layer_name].X, 
+            self.secret_keys[key_number].cpu()
         )
 
     
@@ -289,10 +313,16 @@ if __name__ == "__main__":
     # secret_key='Copyright from Ettore Hidoux',
     net = Network(
         model_name=model_name, model_params=params, 
-        optimizer_params=[0.001, 0.9], 
-        to_watermark=True, secret_key='Ettore Hidoux', method="rand", la=5,
+        optimizer = 'adam', optimizer_params=[0.001, 0.9], 
+        layers_to_watermark=['conv1', 'conv2'], secret_key='Ettore Hidoux', method="rand", la=5,
         device='mps'
     )
+    
+    for k, v in net.model.layers.items():
+        print(v)
+        
+    # print(net.model.layers)
+    # print(net.model.prune_layers)
     
     # print(len(net.secret_keys[-1]), net.conv1_size, net.criterion_rs[-1].X.shape)
     # print(net.methods[-1])
@@ -305,10 +335,23 @@ if __name__ == "__main__":
     
     values = net.train((trainset, validset), num_epoch=3, verbose=2)
     # print(values)
-    
-    print(net.check_watermark())
+
+    for name in net.layers_to_watermark:
+        print(name, net.check_watermark(name))
     # print(net.get_BER())
     
+    values = net.fine_tune((trainset, validset), 2, verbose=2)
+    
+    for name in net.layers_to_watermark:
+        print(name, net.check_watermark(name))
+    
+    value = net.prune(0.3, verbose=True)
+    for name in net.layers_to_watermark:
+        print(name, net.check_watermark(name))
+        
+    value = net.rewrite((trainset, validset), 3, 'New Watermark', 'rand', 10, 2)
+    for name in net.layers_to_watermark:
+        print(name, net.check_watermark(name))
     #net.load_model('models/mlp_cifar10_20230221_104629')
     
     

@@ -1,8 +1,10 @@
 
 
 def get_step_logs(i, N, loss, ber):
-    steplog = " - Step [{}/{}] \t Loss: {:.4f} \t BER: {:.4f}".format(
-        i+1, N, loss, ber)
+    steplog = " - Step [{}/{}] \t Loss: {:.4f} \t BER: {:.3f}".format(
+        i+1, N, loss, ber[0])
+    for b in ber[1:]:
+        steplog +=  ' & {:.3f}'.format(b)
     print(steplog)
     return None
 
@@ -11,7 +13,9 @@ def get_epoch_logs(epoch, num_epoch, train_loss, val_loss, val_acc, time, BER):
         epoch+1, num_epoch, train_loss)
     trainlog += " loss: {:.4f}, \t Validation acc: {:.4f}, \t Time: {}".format(
         val_loss, val_acc, time)
-    trainlog += ", \t BER: {:.3f}".format(BER)
+    trainlog += ", \t BER: {:.3f}".format(BER[0])
+    for ber in BER[1:]:
+        trainlog +=  ' & {:.3f}'.format(ber)
     print(trainlog)
     return None   
     

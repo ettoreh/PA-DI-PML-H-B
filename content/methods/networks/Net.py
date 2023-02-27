@@ -31,6 +31,22 @@ class Net(nn.Module):
             in_features=int(0.36*flatten_size), 
             out_features=num_classes)
         
+        self.layers = {
+            'conv1': self.conv1,
+            'conv2': self.conv2,
+            'fc1': self.fc1,
+            'fc2': self.fc2,
+            'fc3': self.fc3
+        }
+        
+        self.prune_layers = (
+            (self.conv1, 'weight'),
+            (self.conv2, 'weight'),
+            (self.fc1, 'weight'),
+            (self.fc2, 'weight'),
+            (self.fc3, 'weight'),
+        )
+        
     def forward(self, x):
         x = self.pool(F.relu(self.conv1(x)))
         x = self.pool(F.relu(self.conv2(x)))

@@ -56,7 +56,8 @@ def get_accuracy(outputs, labels):
     return torch.tensor(torch.sum(preds == labels).item() / len(preds))
 
 def get_sparsity(layer):
-        return 100. * float(torch.sum(layer == 0)) / float(layer.nelement())
+    print(layer)
+    return 100. * float(torch.sum(layer == 0)) / float(layer.nelement())
     
 def get_global_sparsity(layers):
     value = 100. * float(sum([torch.sum(l[0].weight == 0) for l in layers]))
