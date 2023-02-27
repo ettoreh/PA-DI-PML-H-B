@@ -27,7 +27,7 @@ def get_eval_logs(acc, acc_per_classes):
     return None
 
 def get_prune_logs(layer_sparsity, global_sparsity, layers):
-    for i, layer in enumerate(layers):
-        print("Sparsity in {}: {:.2f}%".format(layer[1], layer_sparsity[i]))
+    for i, layer in enumerate(layers.items()):
+        print("Sparsity in {}: {:.2f}%".format(layer[0], layer_sparsity[i]))
     print("Global sparsity: {:.2f}%".format(global_sparsity))
     return None

@@ -10,6 +10,7 @@ from .secret_matrix import get_secret_matrix
 class WatermarkCrossEntropyLoss(nn.Module):
     def __init__(self, type, size, X=None, device='cpu'):
         super(WatermarkCrossEntropyLoss, self).__init__()
+        self.device = device
         self.X = X
         if X is None:
             self.X = get_secret_matrix(type, size)

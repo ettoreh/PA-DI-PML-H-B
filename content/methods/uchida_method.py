@@ -224,26 +224,31 @@ class Network():
         print('model fine-tuned')
         return history
     
-    def prune(self, pruning_ratio, verbose=False):
+    def prune(self, pruning_ratio, global_=True, verbose=False):
+        
+        self.model.to('cpu')
         parameters_to_prune = self.model.prune_layers
-
-        # prune.global_unstructured(
-        #     parameters_to_prune,
-        #     pruning_method=prune.L1Unstructured,
-        #     amount=pruning_ratio,
-        # )
-        for name, module in parameters_to_prune:
-            # prune 20% of connections in all 2D-conv layers
-            if isinstance(module, torch.nn.Conv2d):
-                prune.l1_unstructured(module, name=name, amount=pruning_ratio)
-            # prune 40% of connections in all linear layers
-            elif isinstance(module, torch.nn.Linear):
+        
+        if global_:
+            prune.global_unstructured(
+                parameters_to_prune,
+                pruning_method=prune.L1Unstructured,
+                amount=pruning_ratio,
+            )
+            
+        else:
+            for module, name in parameters_to_prune:
                 prune.l1_unstructured(module, name=name, amount=pruning_ratio)
         
-        layer_sparsity = [get_sparsity(l[0]) for l in parameters_to_prune]
+        for module, name in parameters_to_prune:        
+            prune.remove(module, name='weight')
+        
+        layer_sparsity = [get_sparsity(l[0].weight) for l in parameters_to_prune]
         global_sparsity = get_global_sparsity(parameters_to_prune)
         if verbose:
-            get_prune_logs(layer_sparsity, global_sparsity, parameters_to_prune)
+            get_prune_logs(layer_sparsity, global_sparsity, self.model.layers)
+        
+        self.model.to(self.device)
         
         return (layer_sparsity, global_sparsity)
     
@@ -257,7 +262,7 @@ class Network():
         if secret_key is None:
             secret_key = get_random_watermark(150)
         if (verbose > 0):
-            print('key: ', get_text_from_watermark(secret_key))
+            print('key: ', secret_key)
         self.to_watermark = True 
         self.layers_to_watermark['conv1', 'conv2', 'fc1', 'fc2', 'fc3']
         self._add_watermark(secret_key, method, la)
@@ -333,17 +338,16 @@ if __name__ == "__main__":
     dataset = DatasetLoader(dataset_name='cifar10', batch_size=32, num_workers=4, pin_memory=True)
     trainset, validset = dataset.get_train_valid_loader()
     
-    values = net.train((trainset, validset), num_epoch=3, verbose=2)
+    values = net.train((trainset, validset), num_epoch=1, verbose=2)
     # print(values)
 
     for name in net.layers_to_watermark:
         print(name, net.check_watermark(name))
     # print(net.get_BER())
     
-    values = net.fine_tune((trainset, validset), 2, verbose=2)
-    
-    for name in net.layers_to_watermark:
-        print(name, net.check_watermark(name))
+    # values = net.fine_tune((trainset, validset), 2, verbose=2)
+    # for name in net.layers_to_watermark:
+    #     print(name, net.check_watermark(name))
     
     value = net.prune(0.3, verbose=True)
     for name in net.layers_to_watermark:
