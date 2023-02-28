@@ -56,10 +56,9 @@ class Network():
             )
             
         self.layers_to_watermark = []
-        self.layers_to_watermark.append(layers_to_watermark)
         self._init_watermark()
         if len(layers_to_watermark) > 0:
-            self._add_watermark(secret_key, method, la)
+            self._add_watermark(secret_key, layers_to_watermark, method, la)
         pass
     
     def _init_watermark(self):
@@ -75,7 +74,7 @@ class Network():
         self.criterion_rs = []
         print('watermark initiated')
         
-    def _add_watermark(self, secret_key, method, la):
+    def _add_watermark(self, secret_key, layers_to_watermark, method, la):
         self.to_watermark = True
         self.methods.append(method)
         self.las.append(la)
@@ -89,6 +88,7 @@ class Network():
             device=self.device
         ))
         criterion_r_per_layer = {}
+        self.layers_to_watermark.append(layers_to_watermark)
         for name in self.layers_to_watermark[-1]:
             criterion_r_per_layer[name] = WatermarkCrossEntropyLoss(
                 type=method, 
@@ -265,8 +265,8 @@ class Network():
         if (verbose > 0):
             print('key: ', secret_key)
         self.to_watermark = True 
-        self.layers_to_watermark.append(['conv1', 'conv2', 'fc1', 'fc2', 'fc3'])
-        self._add_watermark(secret_key, method, la)
+        layers_to_watermark = ['conv1', 'conv2', 'fc1', 'fc2', 'fc3']
+        self._add_watermark(secret_key, layers_to_watermark, method, la)
         
         history = self.train(set=set, num_epoch=num_epoch, verbose=verbose)
         print('watermark rewritted')
@@ -285,7 +285,7 @@ class Network():
         weights = self.get_weights(layer_name, detach=True)
         return get_watermark(weights, self.criterion_rs[matrix_number][layer_name].X)
     
-    def check_watermark(self, layer_name, matrix_number=-1,):
+    def check_watermark(self, layer_name, matrix_number=-1):
         if not self.watermarked:
             print("the model isn't watermarked")
             return None
@@ -299,6 +299,7 @@ class Network():
             return None
         
         weights = self.get_weights(layer_name, detach=True)
+        
         return get_BER(
             weights, 
             self.criterion_rs[matrix_number][layer_name].X, 
@@ -339,11 +340,11 @@ if __name__ == "__main__":
     dataset = DatasetLoader(dataset_name='cifar10', batch_size=32, num_workers=4, pin_memory=True)
     trainset, validset = dataset.get_train_valid_loader()
     
-    values = net.train((trainset, validset), num_epoch=1, verbose=2)
+    values = net.train((trainset, validset), num_epoch=3, verbose=2)
     # print(values)
 
-    for name in net.layers_to_watermark[-1]:
-        print(name, net.check_watermark(name))
+    for name in net.layers_to_watermark[0]:
+        print(name, net.check_watermark(name, matrix_number=0))
     # print(net.get_BER())
     
     # values = net.fine_tune((trainset, validset), 2, verbose=2)
@@ -352,7 +353,7 @@ if __name__ == "__main__":
     
     # value = net.prune(0.3, verbose=True)
     # for name in net.layers_to_watermark[-1]:
-        # print(name, net.check_watermark(name))
+    #     print(name, net.check_watermark(name))
         
     value = net.rewrite((trainset, validset), 3, 'New Watermark', 'rand', 10, 2)
     for name in net.layers_to_watermark[-1]:
@@ -362,4 +363,4 @@ if __name__ == "__main__":
         print(name, net.check_watermark(name, matrix_number=0))
     #net.load_model('models/mlp_cifar10_20230221_104629')
     
-    
+     

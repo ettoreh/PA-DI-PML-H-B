@@ -10,42 +10,13 @@ from networks.Net import Net
 from networks.WideResNet import WideResNet
 from networks.Perceptron import SinglePerceptron
 
+from utils.metrics import *
+from utils.logs import *
+
 from content.watermark.secret_key import get_random_watermark
 from content.watermark.secret_key import get_watermark_from_text
 from content.watermark.secret_key import get_text_from_watermark
 from content.watermark.CustomLoss import WatermarkCrossEntropyLoss
-
-    
-    
-def accuracy(outputs, labels):
-    _, preds = torch.max(outputs, dim=1)
-    return torch.tensor(torch.sum(preds == labels).item() / len(preds))
-
-def _generate_logs(epoch, num_epoch, train_loss, val_loss, val_acc, time):
-        trainlog = "Epoch [{}/{}], \t ".format(epoch+1, num_epoch)
-        trainlog += "Train loss: {:.4f}, \t ".format(train_loss)
-        trainlog += "Validation loss: {:.4f}, \t ".format(val_loss)
-        trainlog += "Validation acc: {:.4f}, \t ".format(val_acc)
-        trainlog += "Time: {}".format(time)
-        return trainlog    
-    
-def _get_sparsity(layer):
-        return 100. * float(torch.sum(layer == 0)) / float(layer.nelement())
-    
-def _get_global_sparsity(layers):
-    return 100. * float(
-        torch.sum(layers[0][0].weight == 0)
-        + torch.sum(layers[1][0].weight == 0)
-        + torch.sum(layers[2][0].weight == 0)
-        + torch.sum(layers[3][0].weight == 0)
-        + torch.sum(layers[4][0].weight == 0)
-    ) / float(
-        layers[0][0].weight.nelement()
-        + layers[1][0].weight.nelement()
-        + layers[2][0].weight.nelement()
-        + layers[3][0].weight.nelement()
-        + layers[4][0].weight.nelement()
-    )
 
 
 
@@ -55,9 +26,9 @@ class Network():
     """
     def __init__(
         self, model_name, model_params, 
-        optimizer_params=[0.01, 0.9], 
-        to_watermark=False, secret_key=None, method="direct", l1=10, l2=10,
-        device='cpu'
+        optimizer, optimizer_params, 
+        layers_to_watermark, secret_key, method, l1, l2,
+        device
     ) -> None:
         self.model_name = model_name
         self.model_params = model_params
@@ -72,34 +43,43 @@ class Network():
         
         self.model = self.model_list[self.model_name](*model_params).to(device)
         self.criterion_0 = nn.CrossEntropyLoss()
-        # self.optimizer = torch.optim.SGD(
-        self.optimizer = torch.optim.Adam(
-            self.model.parameters(), 
-            lr=self.optimizer_params[0], 
-        #    momentum=self.optimizer_params[1], 
-        #    nesterov=True
-        )
-        self.to_watermark = to_watermark
-        if to_watermark:
-            self._init_watermark()
-            self._add_watermark(secret_key, method, l1, l2)
+        if optimizer == 'sgd':
+            self.optimizer = torch.optim.SGD(
+                self.model.parameters(),
+                lr=self.optimizer_params[0],
+                momentum=self.optimizer_params[1], 
+                nesterov=True
+            )
+        else:
+            self.optimizer = torch.optim.Adam(
+                self.model.parameters(), 
+                lr=self.optimizer_params[0]
+            )
+            
+        self._init_watermark()
+        if len(layers_to_watermark) > 0:
+            self._add_watermark(secret_key, layers_to_watermark, method, l1, l2)
         pass
     
     def _init_watermark(self):
+        self.to_watermark = False
         self.methods = []
         self.l1s = []
         self.l2s = []
         self.secret_keys = []
-        self.conv1_size = len(
-            np.mean(
-                self.model.conv1.weight.detach().cpu().numpy(), 0).flatten()
-        )
+        self.layer_sizes = {}
+        for name, layer in self.model.layers.items():
+            self.layer_sizes[name] = len(
+                np.mean(layer.weight.detach().cpu().numpy(), 0).flatten()
+            )
         self.criterion_rs = []
         self.perceptrons = []
         self.optimizer_ps = []
+        self.layers_to_watermark = []
         print('watermark initiated')
         
-    def _add_watermark(self, secret_key, method, l1, l2):
+    def _add_watermark(self, secret_key, layers_to_watermark, method, l1, l2):
+        self.to_watermark = True
         self.methods.append(method)
         self.l1s.append(l1)
         self.l2s.append(l2)
@@ -112,19 +92,29 @@ class Network():
             dtype=torch.float32, 
             device=self.device
         ))
-        self.criterion_rs.append(WatermarkCrossEntropyLoss(
-            type=method, 
-            size=(len(secret_key), self.conv1_size), 
-            device=self.device
-        ))
-        self.perceptrons.append(
-            self.model_list['perceptron'](*[self.conv1_size, 2, 1]).to(self.device)
-        )
-        self.optimizer_ps.append(
-            torch.optim.SGD(self.perceptrons[-1].parameters(), lr=0.01)
-        )
         
-        print('watermark added')
+        
+        criterion_r_per_layer = {}
+        perceptron_per_layer = {}
+        optimizer_p = {}
+        self.layers_to_watermark.append(layers_to_watermark)
+        for name in self.layers_to_watermark[-1]:
+            criterion_r_per_layer[name] = WatermarkCrossEntropyLoss(
+                type=method, 
+                size=(len(secret_key), self.layer_sizes[name]), 
+                device=self.device
+            )
+            perceptron_per_layer[name] = self.model_list[
+                'perceptron'](*[self.layer_sizes[name], 1]).to(self.device
+            )
+            optimizer_p[name] = torch.optim.SGD(
+                self.perceptrons[-1].parameters(), lr=0.01
+            )
+            
+        self.criterion_rs.append(criterion_r_per_layer)
+        self.perceptrons.append(perceptron_per_layer)
+        self.optimizer_ps.append(optimizer_p)
+        print('watermark parameters added')
         
     def load_model(self, model_path):
         self.model.load_state_dict(torch.load(model_path))
@@ -134,12 +124,12 @@ class Network():
         torch.save(self.model.state_dict(), model_path)
         print('model saved')
     
-    def load_matrix(self, matrix_path, watermark_number=-1):
-        self.criterion_rs[watermark_number].load(matrix_path)
+    def load_matrix(self, matrix_path, watermark_number=-1, layer_name='conv1'):
+        self.criterion_rs[watermark_number][layer_name].load(matrix_path)
         print('matrix loaded')
         
-    def save_matrix(self, matrix_path, watermark_number=0):
-        self.criterion_rs[watermark_number].save(matrix_path)
+    def save_matrix(self, matrix_path, watermark_number=0, layer_name='conv1'):
+        self.criterion_rs[watermark_number][layer_name].save(matrix_path)
         print('matrix saved')
         
     def _train_one_batch(self, batch):
@@ -149,27 +139,28 @@ class Network():
         loss = self.criterion_0(out, labels)
         if self.to_watermark:
             self.watermarked = True
-            weights = self.model.conv1.weight.to(torch.float32)
-            
-            out_p = self.perceptrons[-1](self.criterion_rs[-1].X)
-            loss_p = self.criterion_0(out_p.flatten(), self.secret_keys[-1])
-            
-            weights_p = self.perceptrons[-1].linear1.weight.to(torch.float32)
-            dist_p = torch.mean((torch.mean(weights, 0).flatten() - weights_p)**2)
-            
-            loss = torch.add(loss, loss_p, alpha=self.l1s[-1])
-            loss = torch.add(loss, dist_p, alpha=self.l2s[-1])
+            for name in self.layers_to_watermark[-1]:
+                weights = self.get_weights(name)
+                
+                out_p = self.perceptrons[-1][name](self.criterion_rs[-1][name].X)
+                loss_p = self.criterion_0(out_p.flatten(), self.secret_keys[-1])
+                
+                weights_p = self.perceptrons[-1][name].linear1.weight.to(torch.float32)
+                dist_p = torch.mean((torch.mean(weights, 0).flatten() - weights_p)**2)
+                
+                loss = torch.add(loss, loss_p, alpha=self.l1s[-1])
+                loss = torch.add(loss, dist_p, alpha=self.l2s[-1])
+                
+                self.optimizer_ps[-1][name].zero_grad()
+                self.optimizer_ps[-1][name].step()
 
         # Backward and optimize
         self.optimizer.zero_grad()
-        self.optimizer_ps[-1].zero_grad()
         loss.backward()
         self.optimizer.step()
-        self.optimizer_ps[-1].step()
         
         return loss
-    
-    
+
     def _validation_one_batch(self, batch):
         images, labels = batch
         images, labels = images.to(self.device), labels.to(self.device)
@@ -187,7 +178,7 @@ class Network():
             loss = torch.add(loss, loss_p, alpha=self.l1s[-1])
             loss = torch.add(loss, dist_p, alpha=self.l2s[-1])
             
-        acc = accuracy(out, labels)           
+        acc = get_accuracy(out, labels)           
         return loss, acc
     
     # Same, To move
@@ -233,155 +224,52 @@ class Network():
             
             history.append([train_loss, val_loss, val_acc, time])
             if (verbose > 0):
-                print(_generate_logs(
+                print(get_epoch_logs(
                     epoch, num_epoch, train_loss, val_loss, val_acc, time))
                                 
         print('model trained') 
         return history
     
-    # Same, To move
-    def _get_model_accuracy(self, data):
-        correct, total = 0, 0
-        with torch.no_grad():
-            for images, labels in data:
-                images, labels = images, labels
-                outputs = self.model(images)
-                _, predicted = torch.max(outputs.data, 1)
-                total += labels.size(0)
-                correct += (predicted == labels).sum().item()
-        return (100 * correct) / total
     
-    # Same, To move
-    def _get_model_accuracy_per_classes(self, data, classes):
-        correct_pred = {classname: 0 for classname in classes}
-        total_pred = {classname: 0 for classname in classes}
-        percent_pred = {classname: 0 for classname in classes}
-        with torch.no_grad():
-            for images, labels in data:
-                images, labels = images, labels  
-                outputs = self.model(images)
-                _, predictions = torch.max(outputs, 1)
-                for label, prediction in zip(labels, predictions):
-                    if label == prediction:
-                        correct_pred[classes[label]] += 1
-                    total_pred[classes[label]] += 1
+    
+    
+    
+    
+    
         
-        for classname, correct_count in correct_pred.items():
-            accuracy = 100 * float(correct_count) / total_pred[classname]
-            percent_pred[classname] = accuracy
-            
-        return percent_pred
+    def get_weights(self, name, detach=False):
+        if detach:
+            return self.model.layers[name].weight.detach().to(torch.float32)
+        return self.model.layers[name].weight.to(torch.float32)
     
-    # Same, To move
-    def eval(self, testset, verbose=False):
-        acc = self._get_model_accuracy(testset)
-        acc_per_classes = self._get_model_accuracy_per_classes(testset)
-        if verbose:
-            print(f'Accuracy of the network on the 10000 test images: {acc} %')
-            print(f'***')
-            for classname, acc in acc_per_classes.items():
-                print(f'Accuracy for class: {classname:5s} is {acc:.1f} %')
-                
-        print('model evaluated')
-        return acc, acc_per_classes
+    def get_watermark(self, layer_name, matrix_number=-1,):
+        if not self.watermarked:
+            print("the model isn't watermarked")
+            return None
+        
+        weights = self.get_weights(layer_name, detach=True)
+        return get_watermark(weights, self.criterion_rs[matrix_number][layer_name].X)
     
-    # Almost same, To move
-    def fine_tune(
-        self, set, num_epoch, with_watermark=False, secret_key=None, 
-        method='direct', l1=10, l2=5, verbose=0
-    ):
-        if with_watermark:
-            if not self.watermarked:
-                self.to_watermark = True
-                self._init_watermark()
-            self._add_watermark(secret_key, method, l1, l2)
-        else:
-            self.to_watermark = False
-            
-        history = self.train(set=set, num_epoch=num_epoch, verbose=verbose)
-        print('model fine-tuned')
-        return history
+    def check_watermark(self, layer_name, matrix_number=-1):
+        if not self.watermarked:
+            print("the model isn't watermarked")
+            return None
+        
+        weights = self.get_weights(layer_name, detach=True)
+        return check_watermark(weights, self.criterion_rs[matrix_number][layer_name].X)
     
-    # Same, To move
-    def prune(self, pruning_ratio, verbose=False):
-        parameters_to_prune = (
-            (self.model.conv1, 'weight'),
-            (self.model.conv2, 'weight'),
-            (self.model.fc1, 'weight'),
-            (self.model.fc2, 'weight'),
-            (self.model.fc3, 'weight'),
+    def get_BER(self, layer_name, matrix_number=-1, key_number=-1):
+        if not self.watermarked:
+            print("the model isn't watermarked")
+            return None
+        
+        weights = self.get_weights(layer_name, detach=True)
+        
+        return get_BER(
+            weights, 
+            self.criterion_rs[matrix_number][layer_name].X, 
+            self.secret_keys[key_number].cpu()
         )
-
-        prune.global_unstructured(
-            parameters_to_prune,
-            pruning_method=prune.L1Unstructured,
-            amount=pruning_ratio,
-        )
-        
-        conv1_sparsity = _get_sparsity(parameters_to_prune[0][0].weight)
-        conv2_sparsity = _get_sparsity(parameters_to_prune[1][0].weight)
-        fc1_sparsity = _get_sparsity(parameters_to_prune[2][0].weight)
-        fc2_sparsity = _get_sparsity(parameters_to_prune[3][0].weight)
-        fc3_sparsity = _get_sparsity(parameters_to_prune[4][0].weight)
-        global_sparsity = _get_global_sparsity(parameters_to_prune)
-        if verbose:
-            print("Sparsity in conv1.weight: {:.2f}%".format(conv1_sparsity))
-            print("Sparsity in conv2.weight: {:.2f}%".format(conv2_sparsity))
-            print("Sparsity in fc1.weight: {:.2f}%".format(fc1_sparsity))
-            print("Sparsity in fc2.weight: {:.2f}%".format(fc2_sparsity))
-            print("Sparsity in fc3.weight: {:.2f}%".format(fc3_sparsity))
-            print("Global sparsity: {:.2f}%".format(global_sparsity))
-        
-        return (conv1_sparsity, conv2_sparsity, fc1_sparsity, fc2_sparsity, 
-                fc3_sparsity, global_sparsity)
-    
-    # Almost same, To move
-    def rewrite(
-        self, set, num_epoch, secret_key=None, method='direct', l1=10, l2=5,
-        verbose=0
-    ):
-        if not self.watermarked:
-            print("the model isn't watermarked")
-            return None
-        if secret_key is None:
-            secret_key = get_random_watermark(150)
-        if (verbose > 0):
-            print('key: ', get_text_from_watermark(secret_key))
-        self.to_watermark = True 
-        self._add_watermark(secret_key, method, l1, l2)
-        
-        history = self.train(set=set, num_epoch=num_epoch, verbose=verbose)
-        print('watermark rewritted')
-        return history
-        
-    # Same, To move
-    def check_watermark(self):
-        if not self.watermarked:
-            print("the model isn't watermarked")
-            return None
-        
-        weights = self.model.conv1.weight.detach().to(torch.float32)
-        weights = torch.mean(weights, 0)
-        weights = torch.matmul(self.criterion_rs[-1].X, weights.flatten())
-        weights = self.criterion_rs[-1].sigmoid(weights)
-        weights = (weights.detach().cpu().numpy() > 0.5).astype(int)
-        print(weights)
-        return get_text_from_watermark(weights)
-    
-    # Same, To move
-    def get_BER(self, watermark_number=0):
-        if not self.watermarked:
-            print("the model isn't watermarked")
-            return None
-        
-        weights = self.model.conv1.weight.detach().to(torch.float32)
-        weights = torch.mean(weights, 0)
-        weights = torch.matmul(self.criterion_rs[-1].X, weights.flatten())
-        weights = self.criterion_rs[-1].sigmoid(weights)
-        weights = (weights.detach().cpu().numpy() > 0.5).astype(int)
-        return np.mean([weights[i] != self.secret_keys[watermark_number].cpu()[i] for i in range(len(weights))]) 
-
-    
 
 
 if __name__ == "__main__":
