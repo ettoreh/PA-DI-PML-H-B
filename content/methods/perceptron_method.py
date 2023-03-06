@@ -181,7 +181,6 @@ class Network():
         acc = get_accuracy(out, labels)           
         return loss, acc
     
-    # Same, To move
     def _train_one_epoch(self, trainset, validset, verbose=False):
         start_time = datetime.now()
         
@@ -209,7 +208,6 @@ class Network():
             time
         )
         
-    # Same, To move
     def train(self, set, num_epoch, verbose=0):
         print("training started")
         trainset, validset = set
@@ -230,12 +228,76 @@ class Network():
         print('model trained') 
         return history
     
+    def eval(self, testset, verbose=False):
+        acc = get_model_accuracy(self.model, testset)
+        acc_per_classes = get_model_accuracy_per_classes(self.model, testset)
+        if verbose:
+            get_eval_logs(acc, acc_per_classes)
+                
+        print('model evaluated')
+        return acc, acc_per_classes
     
+    def fine_tune(
+        self, set, num_epoch, layers_to_watermark=[], secret_key=None, 
+        method='direct', l1=10, l2=5, verbose=0
+    ):
+        if len(layers_to_watermark) > 0:
+            if not self.watermarked:
+                self._init_watermark()
+            self._add_watermark(secret_key, layers_to_watermark, method, l1, l2)
+        else:
+            self.to_watermark = False
+            
+        history = self.train(set=set, num_epoch=num_epoch, verbose=verbose)
+        print('model fine-tuned')
+        return history
     
+    def prune(self, pruning_ratio, global_=True, verbose=False):
+        
+        self.model.to('cpu')
+        parameters_to_prune = self.model.prune_layers
+        
+        if global_:
+            prune.global_unstructured(
+                parameters_to_prune,
+                pruning_method=prune.L1Unstructured,
+                amount=pruning_ratio,
+            )
+            
+        else:
+            for module, name in parameters_to_prune:
+                prune.l1_unstructured(module, name=name, amount=pruning_ratio)
+        
+        for module, name in parameters_to_prune:        
+            prune.remove(module, name='weight')
+        
+        layer_sparsity = [get_sparsity(l[0].weight) for l in parameters_to_prune]
+        global_sparsity = get_global_sparsity(parameters_to_prune)
+        if verbose:
+            get_prune_logs(layer_sparsity, global_sparsity, self.model.layers)
+        
+        self.model.to(self.device)
+        
+        return (layer_sparsity, global_sparsity)
     
-    
-    
-    
+    def rewrite(
+        self, set, num_epoch, secret_key=None, method='direct', l1=10, l2=5,
+        verbose=0
+    ):
+        if not self.watermarked:
+            print("the model isn't watermarked")
+            return None
+        if secret_key is None:
+            secret_key = get_random_watermark(150)
+        if (verbose > 0):
+            print('key: ', secret_key)
+        self.to_watermark = True 
+        layers_to_watermark = ['conv1', 'conv2', 'fc1', 'fc2', 'fc3']
+        self._add_watermark(secret_key, layers_to_watermark, method, l1, l2)
+        
+        history = self.train(set=set, num_epoch=num_epoch, verbose=verbose)
+        print('watermark rewritted')
+        return history
         
     def get_weights(self, name, detach=False):
         if detach:

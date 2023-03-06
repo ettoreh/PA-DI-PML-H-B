@@ -20,6 +20,9 @@ def get_BER(weights, X, secret_key):
     weights = get_watermark(weights, X)
     return np.mean([weights[i] != secret_key[i] for i in range(len(weights))]) 
 
+def get_ber(watermark, message):
+    return np.mean([watermark[i] != message[i] for i in range(len(message))]) 
+    
 def get_model_accuracy(model, data):
     correct, total = 0, 0
     with torch.no_grad():

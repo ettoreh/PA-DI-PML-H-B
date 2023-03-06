@@ -214,10 +214,9 @@ class Network():
         method='direct', la=10, verbose=0
     ):
         if len(layers_to_watermark) > 0:
-            self.layers_to_watermark.append(layers_to_watermark)
             if not self.watermarked:
                 self._init_watermark()
-            self._add_watermark(secret_key, method, la)
+            self._add_watermark(secret_key, layers_to_watermark, method, la)
         else:
             self.to_watermark = False
             
