@@ -70,22 +70,24 @@ class Network():
     def _init_watermark(self):
         self.to_watermark = False
         self.methods = []
-        self.las = []
+        self.l1s = []
+        self.l2s = []
         self.secret_keys = []
         self.layer_sizes = {}
         for name, layer in self.model.layers.items():
             self.layer_sizes[name] = len(
                 np.mean(layer.weight.detach().cpu().numpy(), 0).flatten()
             )
-        self.criterion_rs = []
+        self.discriminators = []
+        self.extractors = []
         print('watermark initiated')
         
-        
     # TO DO 
-    def _add_watermark(self, secret_key, layers_to_watermark, method, la):
+    def _add_watermark(self, secret_key, layers_to_watermark, method, l1, l2):
         self.to_watermark = True
         self.methods.append(method)
-        self.las.append(la)
+        self.l1s.append(l1)
+        self.l2s.append(l2)
         if secret_key is None:
             secret_key = get_random_watermark(100)
         elif isinstance(secret_key, str):
@@ -106,6 +108,33 @@ class Network():
         self.criterion_rs.append(criterion_r_per_layer)
         print('watermark parameters added')
         
+    # TO DO
+    def _train_one_batch(self, batch):
+        images, labels = batch
+        images, labels = images.to(self.device), labels.to(self.device)
+        out = self.model(images)
+        loss = self.criterion_0(out, labels)
+        
+        if self.to_watermark:
+            self.watermarked = True
+            
+            for name in self.layers_to_watermark[-1]:
+                
+                weights = self.get_weights(name)
+                
+                loss_wm = self.get_BER(name, self.extractors[-1][name], self.secret_keys[-1])
+                loss = torch.add(loss, loss_wm, alpha=self.l1s[-1])
+                
+                loss_det = self.discriminators[-1][name](weights)
+                loss = torch.add(loss, loss_det, alpha=self.l2s[-1])
+
+        # Backward and optimize
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+        
+        return loss
+    
         
         
         
