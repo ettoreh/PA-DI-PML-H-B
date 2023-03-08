@@ -108,7 +108,7 @@ class Network():
                 'perceptron'](*[self.layer_sizes[name], 1]).to(self.device
             )
             optimizer_p[name] = torch.optim.SGD(
-                self.perceptrons[-1].parameters(), lr=0.01
+                perceptron_per_layer[name].parameters(), lr=0.01
             )
             
         self.criterion_rs.append(criterion_r_per_layer)
@@ -132,6 +132,266 @@ class Network():
         self.criterion_rs[watermark_number][layer_name].save(matrix_path)
         print('matrix saved')
         
-    # TO DO
-    def _train_one_batch(self, batch):
-        return None
+    def _train_one_batch(self, batch, weights_init):
+        images, labels = batch
+        images, labels = images.to(self.device), labels.to(self.device)
+        out = self.model(images)
+        loss = self.criterion_0(out, labels)
+        if self.to_watermark:
+            self.watermarked = True
+            for name in self.layers_to_watermark[-1]:
+                weights = self.get_weights(name)
+                
+                out_p = self.perceptrons[-1][name](self.criterion_rs[-1][name].X)
+                loss_p = self.criterion_0(out_p.flatten(), self.secret_keys[-1])
+    
+                weights_p = self.perceptrons[-1][name].linear1.weight.to(torch.float32)
+                dist_init = torch.mean((torch.mean(weights_init[name], 0).flatten() - weights_p)**2)
+                
+                loss_p = torch.add(loss_p, dist_init, alpha=10)  
+                
+                self.optimizer_ps[-1][name].zero_grad()
+                loss_p.backward()
+                self.optimizer_ps[-1][name].step()
+                
+                out_p = self.perceptrons[-1][name](self.criterion_rs[-1][name].X)
+                loss_p = self.criterion_0(out_p.flatten(), self.secret_keys[-1])
+                
+                weights_p = self.perceptrons[-1][name].linear1.weight.to(torch.float32)
+                dist_p = torch.mean((torch.mean(weights, 0).flatten() - weights_p)**2)
+                dist_init = torch.mean((torch.mean(weights_init[name], 0).flatten() - weights_p)**2)
+                
+                loss = torch.add(loss, loss_p, alpha=self.l1s[-1])
+                loss = torch.add(loss, dist_p, alpha=self.l2s[-1])
+                loss = torch.add(loss, dist_init, alpha=10)    
+
+        # Backward and optimize
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+        
+        return loss
+
+    def _validation_one_batch(self, batch, weights_init):
+        images, labels = batch
+        images, labels = images.to(self.device), labels.to(self.device)
+        out = self.model(images)
+        loss = self.criterion_0(out, labels)
+        if self.to_watermark:
+            for name in self.layers_to_watermark[-1]:
+                weights = self.get_weights(name)
+                
+                out_p = self.perceptrons[-1][name](self.criterion_rs[-1][name].X)
+                loss_p = self.criterion_0(out_p.flatten(), self.secret_keys[-1])
+                
+                weights_p = self.perceptrons[-1][name].linear1.weight.to(torch.float32)
+                dist_p = torch.mean((torch.mean(weights, 0).flatten() - weights_p)**2)
+                dist_init = torch.mean((torch.mean(weights_init[name], 0).flatten() - weights_p)**2)
+                
+                loss = torch.add(loss, loss_p, alpha=self.l1s[-1])
+                loss = torch.add(loss, dist_p, alpha=self.l2s[-1])
+                loss = torch.add(loss, dist_init, alpha=self.l2s[-1])
+                
+            
+        acc = get_accuracy(out, labels)           
+        return loss, acc
+    
+    def _train_one_epoch(self, trainset, validset, weights_init, verbose=False):
+        start_time = datetime.now()
+        
+        training = []
+        for i, batch in enumerate(trainset):
+            loss = self._train_one_batch(batch=batch, weights_init=weights_init)
+            
+            training.append(float(loss))
+            
+            if verbose:
+                # if int((10*i) / len(trainset)) % 10 == percent: 
+                if (i % 200 == 0) or (i+1 == len(trainset)):
+                    ber = []
+                    if self.watermarked:
+                        ber = [self.get_BER(name) for name in self.layers_to_watermark[-1]]
+                    get_step_logs(i, len(trainset), loss, ber)
+        
+        validation = [[], []]
+        for i, batch in enumerate(validset):    
+            loss, acc = self._validation_one_batch(batch, weights_init=weights_init)
+            validation[0].append(float(loss))
+            validation[1].append(float(acc))
+        
+        time = datetime.now() - start_time
+        return (
+            np.mean(training), np.mean(validation[0]), np.mean(validation[1]),
+            time
+        )
+        
+    def train(self, set, num_epoch, verbose=0):
+        print("training started")
+        trainset, validset = set
+        weights_init = {}
+        for name in ['conv1', 'conv2', 'fc1', 'fc2', 'fc3']:
+            weights_init[name] = self.get_weights(name)
+        history = []
+        for epoch in range(num_epoch):
+            print("Epoch [{}/{}]".format(epoch+1, num_epoch))
+            
+            self.model.train(True)
+            train_loss, val_loss, val_acc, time = self._train_one_epoch(
+                trainset=trainset, validset=validset, weights_init=weights_init, verbose=(verbose==2)
+            )
+            
+            history.append([train_loss, val_loss, val_acc, time])
+            if (verbose > 0):
+                ber = []
+                if self.watermarked:
+                    ber = [self.get_BER(name) for name in self.layers_to_watermark[-1]]  
+                get_epoch_logs(
+                    epoch, num_epoch, train_loss, val_loss, val_acc, time, ber
+                )
+                                
+        print('model trained') 
+        return history
+    
+    def eval(self, testset, verbose=False):
+        acc = get_model_accuracy(self.model, testset)
+        acc_per_classes = get_model_accuracy_per_classes(self.model, testset)
+        if verbose:
+            get_eval_logs(acc, acc_per_classes)
+                
+        print('model evaluated')
+        return acc, acc_per_classes
+    
+    def fine_tune(
+        self, set, num_epoch, layers_to_watermark=[], secret_key=None, 
+        method='direct', l1=10, l2=5, verbose=0
+    ):
+        if len(layers_to_watermark) > 0:
+            if not self.watermarked:
+                self._init_watermark()
+            self._add_watermark(secret_key, layers_to_watermark, method, l1, l2)
+        else:
+            self.to_watermark = False
+            
+        history = self.train(set=set, num_epoch=num_epoch, verbose=verbose)
+        print('model fine-tuned')
+        return history
+    
+    def prune(self, pruning_ratio, global_=True, verbose=False):
+        
+        self.model.to('cpu')
+        parameters_to_prune = self.model.prune_layers
+        
+        if global_:
+            prune.global_unstructured(
+                parameters_to_prune,
+                pruning_method=prune.L1Unstructured,
+                amount=pruning_ratio,
+            )
+            
+        else:
+            for module, name in parameters_to_prune:
+                prune.l1_unstructured(module, name=name, amount=pruning_ratio)
+        
+        for module, name in parameters_to_prune:        
+            prune.remove(module, name='weight')
+        
+        layer_sparsity = [get_sparsity(l[0].weight) for l in parameters_to_prune]
+        global_sparsity = get_global_sparsity(parameters_to_prune)
+        if verbose:
+            get_prune_logs(layer_sparsity, global_sparsity, self.model.layers)
+        
+        self.model.to(self.device)
+        
+        return (layer_sparsity, global_sparsity)
+    
+    def rewrite(
+        self, set, num_epoch, secret_key=None, method='direct', l1=10, l2=5,
+        verbose=0
+    ):
+        if not self.watermarked:
+            print("the model isn't watermarked")
+            return None
+        if secret_key is None:
+            secret_key = get_random_watermark(150)
+        if (verbose > 0):
+            print('key: ', secret_key)
+        self.to_watermark = True 
+        layers_to_watermark = ['conv1', 'conv2', 'fc1', 'fc2', 'fc3']
+        self._add_watermark(secret_key, layers_to_watermark, method, l1, l2)
+        
+        history = self.train(set=set, num_epoch=num_epoch, verbose=verbose)
+        print('watermark rewritted')
+        return history
+        
+    def get_weights(self, name, detach=False):
+        if detach:
+            return self.model.layers[name].weight.detach().to(torch.float32)
+        return self.model.layers[name].weight.to(torch.float32)
+    
+    def get_watermark(self, layer_name, matrix_number=-1,):
+        if not self.watermarked:
+            print("the model isn't watermarked")
+            return None
+        
+        weights = self.get_weights(layer_name, detach=True)
+        return get_watermark(weights, self.criterion_rs[matrix_number][layer_name].X)
+    
+    def check_watermark(self, layer_name, matrix_number=-1):
+        if not self.watermarked:
+            print("the model isn't watermarked")
+            return None
+        
+        weights = self.get_weights(layer_name, detach=True)
+        return check_watermark(weights, self.criterion_rs[matrix_number][layer_name].X)
+    
+    def get_BER(self, layer_name, matrix_number=-1, key_number=-1):
+        if not self.watermarked:
+            print("the model isn't watermarked")
+            return None
+        
+        weights = self.get_weights(layer_name, detach=True)
+        
+        return get_BER(
+            weights, 
+            self.criterion_rs[matrix_number][layer_name].X, 
+            self.secret_keys[key_number].cpu()
+        )
+
+
+if __name__ == "__main__":
+    import sys 
+    from content.dataset_loader.datasetLoader import DatasetLoader
+    
+    model_name = 'net'
+    params = [10, [6, 16], 5]
+    # print(model_name, params)
+    
+    # secret_key='Copyright from Ettore Hidoux',
+    net = Network(
+        model_name=model_name, model_params=params, 
+        optimizer = 'adam', optimizer_params=[0.001, 0.9], 
+        layers_to_watermark=['conv1', 'conv2'], secret_key='Copyright from Ettore Hidoux', method="rand", l1=1, l2=10
+        
+        ,
+        device='mps'
+    )
+    
+    print(len(net.secret_keys[-1]), net.layer_sizes['conv1'], net.criterion_rs[-1]['conv1'].X.shape)
+    # print(net.criterion_p)
+    print(net.perceptrons[-1]['conv1'].linear1.weight.shape)
+    # print(net.methods[-1])
+    
+    # print(net.secret_keys[0].cpu())
+    # print(net.criterion_rs[0].X.cpu())
+    
+    dataset = DatasetLoader(dataset_name='cifar10', batch_size=32, num_workers=4, pin_memory=True)
+    trainset, validset = dataset.get_train_valid_loader()
+    
+    # values = net._train_one_epoch(trainset, validset, verbose=True)
+    # print(values)
+    
+    values = net.train((trainset, validset), num_epoch=3, verbose=2)
+    
+    for name in net.layers_to_watermark[0]:
+        print(name, net.check_watermark(name, matrix_number=0))
+     
