@@ -108,7 +108,7 @@ class Network():
                 'perceptron'](*[self.layer_sizes[name], 1]).to(self.device
             )
             optimizer_p[name] = torch.optim.SGD(
-                self.perceptrons[-1].parameters(), lr=0.01
+                perceptron_per_layer[name].parameters(), lr=0.01
             )
             
         self.criterion_rs.append(criterion_r_per_layer)
@@ -144,6 +144,12 @@ class Network():
                 
                 out_p = self.perceptrons[-1][name](self.criterion_rs[-1][name].X)
                 loss_p = self.criterion_0(out_p.flatten(), self.secret_keys[-1])
+                self.optimizer_ps[-1][name].zero_grad()
+                loss_p.backward()
+                self.optimizer_ps[-1][name].step()
+                
+                out_p = self.perceptrons[-1][name](self.criterion_rs[-1][name].X)
+                loss_p = self.criterion_0(out_p.flatten(), self.secret_keys[-1])
                 
                 weights_p = self.perceptrons[-1][name].linear1.weight.to(torch.float32)
                 dist_p = torch.mean((torch.mean(weights, 0).flatten() - weights_p)**2)
@@ -151,8 +157,6 @@ class Network():
                 loss = torch.add(loss, loss_p, alpha=self.l1s[-1])
                 loss = torch.add(loss, dist_p, alpha=self.l2s[-1])
                 
-                self.optimizer_ps[-1][name].zero_grad()
-                self.optimizer_ps[-1][name].step()
 
         # Backward and optimize
         self.optimizer.zero_grad()
@@ -167,16 +171,17 @@ class Network():
         out = self.model(images)
         loss = self.criterion_0(out, labels)
         if self.to_watermark:
-            weights = self.model.conv1.weight.to(torch.float32)
-            
-            out_p = self.perceptrons[-1](self.criterion_rs[-1].X)
-            loss_p = self.criterion_0(out_p.flatten(), self.secret_keys[-1])
-            
-            weights_p = self.perceptrons[-1].linear1.weight.to(torch.float32)
-            dist_p = torch.mean((torch.mean(weights, 0).flatten() - weights_p)**2)
-            
-            loss = torch.add(loss, loss_p, alpha=self.l1s[-1])
-            loss = torch.add(loss, dist_p, alpha=self.l2s[-1])
+            for name in self.layers_to_watermark[-1]:
+                weights = self.get_weights(name)
+                
+                out_p = self.perceptrons[-1][name](self.criterion_rs[-1][name].X)
+                loss_p = self.criterion_0(out_p.flatten(), self.secret_keys[-1])
+                
+                weights_p = self.perceptrons[-1][name].linear1.weight.to(torch.float32)
+                dist_p = torch.mean((torch.mean(weights, 0).flatten() - weights_p)**2)
+                
+                loss = torch.add(loss, loss_p, alpha=self.l1s[-1])
+                loss = torch.add(loss, dist_p, alpha=self.l2s[-1])
             
         acc = get_accuracy(out, labels)           
         return loss, acc
@@ -193,8 +198,10 @@ class Network():
             if verbose:
                 # if int((10*i) / len(trainset)) % 10 == percent: 
                 if (i % 200 == 0) or (i+1 == len(trainset)):
-                    print(" - Step [{}/{}] \t Loss: {:.4f} \t BER: {:.4f}"
-                        .format(i+1, len(trainset), loss, self.get_BER()))
+                    ber = []
+                    if self.watermarked:
+                        ber = [self.get_BER(name) for name in self.layers_to_watermark[-1]]
+                    get_step_logs(i, len(trainset), loss, ber)
         
         validation = [[], []]
         for i, batch in enumerate(validset):    
@@ -222,8 +229,12 @@ class Network():
             
             history.append([train_loss, val_loss, val_acc, time])
             if (verbose > 0):
-                print(get_epoch_logs(
-                    epoch, num_epoch, train_loss, val_loss, val_acc, time))
+                ber = []
+                if self.watermarked:
+                    ber = [self.get_BER(name) for name in self.layers_to_watermark[-1]]  
+                get_epoch_logs(
+                    epoch, num_epoch, train_loss, val_loss, val_acc, time, ber
+                )
                                 
         print('model trained') 
         return history
@@ -345,16 +356,16 @@ if __name__ == "__main__":
     # secret_key='Copyright from Ettore Hidoux',
     net = Network(
         model_name=model_name, model_params=params, 
-        optimizer_params=[0.001, 0.9], 
-        to_watermark=True, secret_key='Ettore Hidoux', method="rand", l1=1, l2=10
+        optimizer = 'adam', optimizer_params=[0.001, 0.9], 
+        layers_to_watermark=['conv1', 'conv2'], secret_key='Copyright from Ettore Hidoux', method="rand", l1=1, l2=10
         
         ,
         device='mps'
     )
     
-    print(len(net.secret_keys[-1]), net.conv1_size, net.criterion_rs[-1].X.shape)
+    print(len(net.secret_keys[-1]), net.layer_sizes['conv1'], net.criterion_rs[-1]['conv1'].X.shape)
     # print(net.criterion_p)
-    print(net.perceptrons[-1].linear1.weight.shape)
+    print(net.perceptrons[-1]['conv1'].linear1.weight.shape)
     # print(net.methods[-1])
     
     # print(net.secret_keys[0].cpu())
@@ -368,5 +379,5 @@ if __name__ == "__main__":
     
     values = net.train((trainset, validset), num_epoch=3, verbose=2)
     
-    print(net.check_watermark())
-    
+    for name in net.layers_to_watermark[0]:
+        print(name, net.check_watermark(name, matrix_number=0))

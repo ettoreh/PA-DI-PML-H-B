@@ -8,13 +8,13 @@ def get_step_logs(i, N, loss, ber):
     print(steplog)
     return None
 
-def get_epoch_logs(epoch, num_epoch, train_loss, val_loss, val_acc, time, BER):
+def get_epoch_logs(epoch, num_epoch, train_loss, val_loss, val_acc, time, ber):
     trainlog = "Epoch [{}/{}], \t Train loss: {:.4f}, \t Validation".format(
         epoch+1, num_epoch, train_loss)
     trainlog += " loss: {:.4f}, \t Validation acc: {:.4f}, \t Time: {}".format(
         val_loss, val_acc, time)
-    trainlog += ", \t BER: {:.3f}".format(BER[0])
-    for ber in BER[1:]:
+    trainlog += ", \t BER: {:.3f}".format(ber[0])
+    for ber in ber[1:]:
         trainlog +=  ' & {:.3f}'.format(ber)
     print(trainlog)
     return None   
