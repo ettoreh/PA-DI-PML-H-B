@@ -17,7 +17,7 @@ from utils.logs import *
 from content.watermark.secret_key import get_random_watermark
 from content.watermark.secret_key import get_watermark_from_text
 from content.watermark.secret_key import get_text_from_watermark
-from content.watermark.CustomLoss import WatermarkCrossEntropyLoss
+from content.watermark.secret_matrix import get_secret_matrix
 
 
 
@@ -73,6 +73,7 @@ class Network():
         self.l1s = []
         self.l2s = []
         self.secret_keys = []
+        self.layers_to_watermark = []
         self.layer_sizes = {}
         for name, layer in self.model.layers.items():
             self.layer_sizes[name] = len(
@@ -97,15 +98,23 @@ class Network():
             dtype=torch.float32, 
             device=self.device
         ))
-        criterion_r_per_layer = {}
+        
+        dicriminators_per_layer = {}
+        extractors_per_layer = {}
         self.layers_to_watermark.append(layers_to_watermark)
         for name in self.layers_to_watermark[-1]:
-            criterion_r_per_layer[name] = WatermarkCrossEntropyLoss(
-                type=method, 
-                size=(len(secret_key), self.layer_sizes[name]), 
-                device=self.device
-            )
-        self.criterion_rs.append(criterion_r_per_layer)
+            dicriminators_per_layer[name] = ...
+            
+            
+            extractors_per_layer[name] = Extractor(
+                None, 
+                get_secret_matrix(type="rand", size=(len(secret_key), self.layer_sizes[name]))
+            ).to(self.device)
+            
+            
+            
+        self.discriminators.append(dicriminators_per_layer)
+        self.extractors.append(extractors_per_layer)
         print('watermark parameters added')
         
     # TO DO
