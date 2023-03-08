@@ -103,15 +103,16 @@ class Network():
         extractors_per_layer = {}
         self.layers_to_watermark.append(layers_to_watermark)
         for name in self.layers_to_watermark[-1]:
-            dicriminators_per_layer[name] = ...
-            
-            
-            extractors_per_layer[name] = Extractor(
-                None, 
-                get_secret_matrix(type="rand", size=(len(secret_key), self.layer_sizes[name]))
+            dicriminators_per_layer[name] = Discriminator(
+                self.layer_sizes[name],
+                2*self.layer_sizes[name]
             ).to(self.device)
             
-            
+            extractors_per_layer[name] = Extractor(
+                self.layer_sizes[name],
+                2*self.layer_sizes[name],
+                len(secret_key)
+            ).to(self.device)
             
         self.discriminators.append(dicriminators_per_layer)
         self.extractors.append(extractors_per_layer)
@@ -155,26 +156,29 @@ class Network():
         
         
         
-    def get_weights(self, name, detach=False):
+    def get_weights(self, detach=False):
+        params = []
+        for prm in self.model.parameters():
+            params.append(torch.mean(prm, 0).flatten())
         if detach:
-            return self.model.layers[name].weight.detach().to(torch.float32)
-        return self.model.layers[name].weight.to(torch.float32)
+            return torch.cat(params).detach()
+        return torch.cat(params)
     
-    def get_watermark(self, layer_name, extractor):
+    def get_watermark(self, extractor):
         if not self.watermarked:
             print("the model isn't watermarked")
             return None
-        weights = self.get_weights(layer_name, detach=True)
+        weights = self.get_weights(detach=True)
         return extractor(weights) 
     
-    def check_watermark(self, layer_name, extractor):
+    def check_watermark(self, extractor):
         if not self.watermarked:
             print("the model isn't watermarked")
             return None
-        watermark = self.get_watermark(layer_name, extractor)
+        watermark = self.get_watermark(extractor)
         return get_text_from_watermark(watermark)
     
-    def get_BER(self, layer_name, extractor, message):
+    def get_ber(self, layer_name, extractor, message):
         if not self.watermarked:
             print("the model isn't watermarked")
             return None

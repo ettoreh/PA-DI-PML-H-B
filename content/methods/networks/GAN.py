@@ -40,16 +40,16 @@ class Discriminator(nn.Module):
         return x
     
 class Extractor(nn.Module):
-    def __init__(self, message_size, input_size, hidden_size):
+    def __init__(self, proportion, input_size, hidden_size, output_size):
         super(Extractor, self).__init__()
-        p = message_size/input_size
+        size = int(proportion*input_size)
         good_shape = True
         while good_shape:
-            self.d = np.random.choice([0,1], size=input_size, p=[1-p, p])
-            good_shape = ~(np.sum(self.d)==message_size)
-        self.map1 = nn.Linear(message_size, hidden_size)
+            self.d = np.random.choice([0,1], size=input_size, p=[1-proportion, proportion])
+            good_shape = ~(np.sum(self.d)==size)
+        self.map1 = nn.Linear(size, hidden_size)
         self.map2 = nn.Linear(hidden_size, hidden_size)
-        self.map3 = nn.Linear(hidden_size, message_size)
+        self.map3 = nn.Linear(hidden_size, output_size)
         
     def forward(self, x):
         x = torch.tensor([y for (y, Y) in zip(x, self.d) if Y!=0])
