@@ -140,6 +140,9 @@ class Network():
         
     # TO DO
     def _train_one_batch(self, batch, watermark_init, weights_init):
+        
+        torch.autograd.set_detect_anomaly(True)
+        
         images, labels = batch
         images, labels = images.to(self.device), labels.to(self.device)
         out = self.model(images)
@@ -147,6 +150,14 @@ class Network():
         
         if self.to_watermark:
             self.watermarked = True
+            
+            # extractor training
+            
+            # discriminator training
+            
+            # model training 
+            
+            
             for name in self.layers_to_watermark[-1]:
                 weights = self.get_weights(name)
                 
@@ -159,12 +170,18 @@ class Network():
                 print(ber)
             
                 # extractor training
+                for param in self.extractors[-1][name].parameters():
+                    param.requires_grad = True
+                    
                 loss_ext_wm = F.binary_cross_entropy_with_logits(watermark, self.secret_keys[-1])
                 loss_ext_nwm = F.binary_cross_entropy_with_logits(watermark_r, watermark_init[name])
                 self.ext_optimizer[-1][name].zero_grad()
-                loss_ext_wm.backward(retain_graph=True)
-                loss_ext_nwm.backward()
+                loss_ext_wm.backward()
+                #loss_ext_nwm.backward()
                 self.ext_optimizer[-1][name].step()
+                
+                for param in self.extractors[-1][name].parameters():
+                    param.requires_grad = False
                 
                 # discriminator outputs
                 out_det_wm = self.discriminators[-1][name](weights)
@@ -176,8 +193,8 @@ class Network():
                 loss_det_wm = F.binary_cross_entropy_with_logits(out_det_wm, torch.tensor([1], dtype=torch.float32, device=self.device))
                 loss_det_nwm = F.binary_cross_entropy_with_logits(out_det_nwm, torch.tensor([0], dtype=torch.float32, device=self.device))
                 self.det_optimizer[-1][name].zero_grad()
-                loss_det_wm.backward(retain_graph=True)
-                loss_det_nwm.backward()
+                #loss_det_wm.backward(retain_graph=True)
+                #loss_det_nwm.backward()
                 self.det_optimizer[-1][name].step()
                 
                 # train discriminator on watermark 
@@ -212,14 +229,21 @@ class Network():
                 weights = self.get_weights(name)
                 watermark = self.extractors[-1][name](weights)
                 loss_ext = F.binary_cross_entropy_with_logits(watermark, self.secret_keys[-1])
-                # loss_det = - torch.log(self.discriminators[-1][name](weights))
+                #loss_det = - torch.log(self.discriminators[-1][name](weights))
                 loss = torch.add(loss, loss_ext, alpha=self.l1s[-1])
-                # loss = torch.add(loss, loss_det, alpha=self.l2s[-1])
+                #loss = torch.add(loss, loss_det, alpha=self.l2s[-1])
             
+        
         # Backward and optimize
+        for param in self.model.parameters():
+            param.requires_grad = True
+            
         self.optimizer.zero_grad()
-        loss.backward()
+        loss.backward(retain_graph=True)
         self.optimizer.step()
+        
+        for param in self.model.parameters():
+            param.requires_grad = False
         
         return loss
     
