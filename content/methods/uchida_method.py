@@ -320,7 +320,7 @@ if __name__ == "__main__":
     net = Network(
         model_name=model_name, model_params=params, 
         optimizer = 'adam', optimizer_params=[0.001, 0.9], 
-        layers_to_watermark=['conv1', 'conv2'], secret_key='Ettore Hidoux', method="rand", la=5,
+        layers_to_watermark=['conv1', 'conv2'], secret_key='Copyright from Ettore Hidoux', method="rand", la=5,
         device='mps'
     )
     
@@ -354,12 +354,12 @@ if __name__ == "__main__":
     # for name in net.layers_to_watermark[-1]:
     #     print(name, net.check_watermark(name))
         
-    value = net.rewrite((trainset, validset), 3, 'New Watermark', 'rand', 10, 2)
-    for name in net.layers_to_watermark[-1]:
-        print(name, net.check_watermark(name, matrix_number=-1))
+    # value = net.rewrite((trainset, validset), 3, 'New Watermark', 'rand', 10, 2)
+    # for name in net.layers_to_watermark[-1]:
+    #     print(name, net.check_watermark(name, matrix_number=-1))
         
-    for name in net.layers_to_watermark[0]:
-        print(name, net.check_watermark(name, matrix_number=0))
+    # for name in net.layers_to_watermark[0]:
+    #     print(name, net.check_watermark(name, matrix_number=0))
     #net.load_model('models/mlp_cifar10_20230221_104629')
     
      

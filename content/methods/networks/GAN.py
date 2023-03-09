@@ -36,25 +36,28 @@ class Discriminator(nn.Module):
         x = F.elu(self.map1(x))
         x = F.elu(self.map2(x))
         x = F.elu(self.map3(x))
-        x = F.sigmoid(x)
+        x = torch.sigmoid(x)
         return x
     
 class Extractor(nn.Module):
-    def __init__(self, proportion, input_size, hidden_size, output_size):
+    def __init__(self, proportion, input_size, hidden_size, output_size, device="cpu"):
         super(Extractor, self).__init__()
         size = int(proportion*input_size)
         good_shape = True
         while good_shape:
             self.d = np.random.choice([0,1], size=input_size, p=[1-proportion, proportion])
             good_shape = ~(np.sum(self.d)==size)
-        self.map1 = nn.Linear(size, hidden_size)
+        self.D = torch.tensor(np.diag(self.d), device=device, dtype=torch.float32)
+        self.map1 = nn.Linear(input_size, hidden_size)
         self.map2 = nn.Linear(hidden_size, hidden_size)
         self.map3 = nn.Linear(hidden_size, output_size)
         
     def forward(self, x):
-        x = torch.tensor([y for (y, Y) in zip(x, self.d) if Y!=0])
+        # x = torch.tensor([y for (y, Y) in zip(x, self.d) if Y!=0])
+        x = torch.matmul(x, self.D)
         x = F.relu(self.map1(x))
         x = F.relu(self.map2(x))
         x = F.relu(self.map3(x))
+        x = torch.sigmoid(x)
         return x 
     

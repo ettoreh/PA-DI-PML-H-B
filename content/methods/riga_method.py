@@ -1,6 +1,7 @@
 import torch 
 import torch.nn as nn
 import torch.nn.utils.prune as prune
+import torch.nn.functional as F
 
 import numpy as np
 
@@ -28,7 +29,7 @@ class Network():
     def __init__(
         self, model_name, model_params, 
         optimizer, optimizer_params, 
-        layers_to_watermark, secret_key, method, l1, l2,
+        layers_to_watermark, secret_key, l1, l2,
         device
     ) -> None:
         self.model_name = model_name
@@ -63,7 +64,7 @@ class Network():
             
         self._init_watermark()
         if len(layers_to_watermark) > 0:
-            self._add_watermark(secret_key, layers_to_watermark, method, l1, l2)
+            self._add_watermark(secret_key, layers_to_watermark, l1, l2)
         pass
     
     # TO DO
@@ -81,12 +82,13 @@ class Network():
             )
         self.discriminators = []
         self.extractors = []
+        self.ext_optimizer = []
+        self.det_optimizer = []
         print('watermark initiated')
         
     # TO DO 
-    def _add_watermark(self, secret_key, layers_to_watermark, method, l1, l2):
+    def _add_watermark(self, secret_key, layers_to_watermark, l1, l2):
         self.to_watermark = True
-        self.methods.append(method)
         self.l1s.append(l1)
         self.l2s.append(l2)
         if secret_key is None:
@@ -99,27 +101,45 @@ class Network():
             device=self.device
         ))
         
-        dicriminators_per_layer = {}
-        extractors_per_layer = {}
         self.layers_to_watermark.append(layers_to_watermark)
+        discriminators = {}
+        extractors = {}
+        ext_optimizers = {}
+        det_optimizers = {}
         for name in self.layers_to_watermark[-1]:
-            dicriminators_per_layer[name] = Discriminator(
-                self.layer_sizes[name],
-                2*self.layer_sizes[name]
+            
+            discriminators[name] = Discriminator(
+                input_size=self.layer_sizes[name],
+                hidden_size=2*self.layer_sizes[name]
             ).to(self.device)
             
-            extractors_per_layer[name] = Extractor(
-                self.layer_sizes[name],
-                2*self.layer_sizes[name],
-                len(secret_key)
+            extractors[name] = Extractor(
+                proportion=0.8,
+                input_size=self.layer_sizes[name],
+                hidden_size=2*self.layer_sizes[name],
+                output_size=len(secret_key),
+                device=self.device
             ).to(self.device)
+        
+            ext_optimizers[name] = torch.optim.Adam(
+                extractors[name].parameters(), 
+                lr=self.optimizer_params[0]
+            )
             
-        self.discriminators.append(dicriminators_per_layer)
-        self.extractors.append(extractors_per_layer)
+            det_optimizers[name] = torch.optim.Adam(
+                discriminators[name].parameters(), 
+                lr=self.optimizer_params[0]
+            )
+        
+        self.discriminators.append(discriminators)
+        self.extractors.append(extractors)
+        self.ext_optimizer.append(ext_optimizers)
+        self.det_optimizer.append(det_optimizers)
+            
         print('watermark parameters added')
         
     # TO DO
-    def _train_one_batch(self, batch):
+    def _train_one_batch(self, batch, weights_init):
         images, labels = batch
         images, labels = images.to(self.device), labels.to(self.device)
         out = self.model(images)
@@ -127,17 +147,35 @@ class Network():
         
         if self.to_watermark:
             self.watermarked = True
-            
             for name in self.layers_to_watermark[-1]:
-                
                 weights = self.get_weights(name)
-                
-                loss_wm = self.get_BER(name, self.extractors[-1][name], self.secret_keys[-1])
-                loss = torch.add(loss, loss_wm, alpha=self.l1s[-1])
-                
-                loss_det = self.discriminators[-1][name](weights)
-                loss = torch.add(loss, loss_det, alpha=self.l2s[-1])
+                watermark = self.extractors[-1][name](weights)
 
+                # ber with extractor 
+                ber = self.get_ber(watermark, self.secret_keys[-1])
+                print(ber)
+            
+                # train extractor
+                loss_ext = F.binary_cross_entropy_with_logits(watermark, self.secret_keys[-1])
+                self.ext_optimizer[-1][name].zero_grad()
+                loss_ext.backward()
+                self.ext_optimizer[-1][name].step()
+            
+                # loss disciminator
+                # loss_det = ...
+            
+                # train discriminator
+                # self.det_optimizer[-1].zero_grad()
+                # loss_det.backward()
+                # self.det_optimizer[-1].step()
+            
+                # add all loss
+                weights = self.get_weights(name)
+                watermark = self.extractors[-1][name](weights)
+                loss_ext = F.binary_cross_entropy_with_logits(watermark, self.secret_keys[-1])
+                loss = torch.add(loss, loss_ext, alpha=self.l1s[-1])
+                # loss = torch.add(loss, loss_det, alpha=self.l2s[-1])
+            
         # Backward and optimize
         self.optimizer.zero_grad()
         loss.backward()
@@ -153,34 +191,72 @@ class Network():
         
         
         
-        
-        
-        
-    def get_weights(self, detach=False):
-        params = []
-        for prm in self.model.parameters():
-            params.append(torch.mean(prm, 0).flatten())
+    def get_weights(self, name, detach=False):
+        w = self.model.layers[name].weight.to(torch.float32)
         if detach:
-            return torch.cat(params).detach()
-        return torch.cat(params)
+            w = w.detach()
+        return torch.mean(w, 0).flatten()
     
-    def get_watermark(self, extractor):
+    def get_watermark(self, layer_name, extractor):
         if not self.watermarked:
             print("the model isn't watermarked")
             return None
-        weights = self.get_weights(detach=True)
+        weights = self.get_weights(layer_name, detach=True)
         return extractor(weights) 
     
-    def check_watermark(self, extractor):
-        if not self.watermarked:
-            print("the model isn't watermarked")
-            return None
-        watermark = self.get_watermark(extractor)
-        return get_text_from_watermark(watermark)
-    
-    def get_ber(self, layer_name, extractor, message):
+    def check_watermark(self, layer_name, extractor):
         if not self.watermarked:
             print("the model isn't watermarked")
             return None
         watermark = self.get_watermark(layer_name, extractor)
-        return get_ber(watermark, message)
+        return get_text_from_watermark(watermark)
+    
+    def get_ber(self, watermark, message):
+        if not self.watermarked:
+            print("the model isn't watermarked")
+            return None
+        # return get_ber(watermark, message)
+        return float(torch.mean((
+            (watermark>0.5).to(torch.float32) != message).to(torch.float32), 0))
+    
+    
+    
+if __name__=="__main__":
+    import sys 
+    from content.dataset_loader.datasetLoader import DatasetLoader
+    
+    model_name = 'net'
+    params = [10, [6, 16], 5]
+    # print(model_name, params)
+    
+    # secret_key='Copyright from Ettore Hidoux',
+    net = Network(
+        model_name=model_name, model_params=params, 
+        optimizer='adam', optimizer_params=[0.001, 0.9], 
+        layers_to_watermark=['conv1', 'conv2'], secret_key='Copyright from Ettore Hidoux', l1=5, l2=10,
+        device=torch.device("mps")
+    )
+    
+    dataset = DatasetLoader(dataset_name='cifar10', batch_size=32, num_workers=4, pin_memory=True)
+    trainset, validset = dataset.get_train_valid_loader()
+    
+    print("training started")
+    history = []
+    
+    weights_init = {}
+    for name in ['conv1', 'conv2', 'fc1', 'fc2', 'fc3']:
+        weights_init[name] = net.get_weights(name)
+            
+    for epoch in range(1):
+        print("Epoch [{}/{}]".format(epoch+1, 1))
+            
+        net.model.train(True)
+        
+        start_time = datetime.now()
+        
+        training = []
+        for i, batch in enumerate(trainset):
+            loss = net._train_one_batch(batch=batch, weights_init=wei)
+            
+            training.append(float(loss))
+        
