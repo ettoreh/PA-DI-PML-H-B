@@ -138,6 +138,13 @@ class Network():
             
         print('watermark parameters added')
         
+    def _train_extractor(self, extractor, optimizer, weights, key, retain_graph=False):
+        out = extractor(weights)
+        loss = F.binary_cross_entropy_with_logits(out, key)
+        optimizer.zero_grad()
+        loss.backward(retain_graph=retain_graph)
+        optimizer.step()
+        
     # TO DO
     def _train_one_batch(self, batch, watermark_init, weights_init):
         
@@ -148,102 +155,75 @@ class Network():
         out = self.model(images)
         loss = self.criterion_0(out, labels)
         
+        for param in self.model.parameters():
+            param.requires_grad = False
+    
         if self.to_watermark:
             self.watermarked = True
             
-            # extractor training
-            
-            # discriminator training
-            
-            # model training 
-            
-            
             for name in self.layers_to_watermark[-1]:
-                weights = self.get_weights(name)
+                # model weights
+                weights = self.get_weights(name, detach=True)
                 
                 # extractor outputs
                 watermark = self.extractors[-1][name](weights)
-                watermark_r = self.extractors[-1][name](weights_init[name])
 
                 # ber with extractor 
                 ber = self.get_ber(watermark, self.secret_keys[-1])
                 print(ber)
-            
-                # extractor training
+                
                 for param in self.extractors[-1][name].parameters():
                     param.requires_grad = True
-                    
-                loss_ext_wm = F.binary_cross_entropy_with_logits(watermark, self.secret_keys[-1])
-                loss_ext_nwm = F.binary_cross_entropy_with_logits(watermark_r, watermark_init[name])
+                
+                # extractor training    
+                out_ext_wm = self.extractors[-1][name](weights)
+                loss_ext_wm = F.binary_cross_entropy_with_logits(out_ext_wm, self.secret_keys[-1])
+                out_ext = self.extractors[-1][name](weights_init[name])
+                loss_ext = F.binary_cross_entropy_with_logits(out_ext, watermark_init[name])
+                loss = loss_ext_wm + loss_ext
                 self.ext_optimizer[-1][name].zero_grad()
-                loss_ext_wm.backward()
-                #loss_ext_nwm.backward()
+                loss.backward(retain_graph=True)
                 self.ext_optimizer[-1][name].step()
                 
                 for param in self.extractors[-1][name].parameters():
                     param.requires_grad = False
-                
+                    
+                for param in self.discriminators[-1][name].parameters():
+                    param.requires_grad = True
+                    
                 # discriminator outputs
                 out_det_wm = self.discriminators[-1][name](weights)
                 out_det_nwm = self.discriminators[-1][name](weights_init[name])
-                out_det = torch.cat([out_det_wm, out_det_nwm])
-                print(out_det.cpu().detach())
+                print(float(out_det_wm), float(out_det_nwm))
                 
-                # train discriminator 
+                # discriminator training
                 loss_det_wm = F.binary_cross_entropy_with_logits(out_det_wm, torch.tensor([1], dtype=torch.float32, device=self.device))
                 loss_det_nwm = F.binary_cross_entropy_with_logits(out_det_nwm, torch.tensor([0], dtype=torch.float32, device=self.device))
+                loss = loss_det_wm + loss_det_nwm
                 self.det_optimizer[-1][name].zero_grad()
-                #loss_det_wm.backward(retain_graph=True)
-                #loss_det_nwm.backward()
+                loss.backward(retain_graph=True)
                 self.det_optimizer[-1][name].step()
                 
-                # train discriminator on watermark 
-                #weights = self.get_weights(name)
-                #out_det_wm = self.discriminators[-1][name](weights)
-                #loss_det_wm = torch.log(out_det_wm)
-                #self.det_optimizer[-1][name].zero_grad()
-                #loss_det_wm.backward()
-                #self.det_optimizer[-1][name].step()
-                
-                # train discriminator on non watermark
-                #out_det_nwm = self.discriminators[-1][name](weights_init[name])
-                #loss_det_nwm = torch.log(1-out_det_nwm)
-                #self.det_optimizer[-1][name].zero_grad()
-                #loss_det_nwm.backward()
-                #self.det_optimizer[-1][name].step()
-                
-                
-                #out_det_nwm = self.discriminators[-1][name](weights_init[name])
-                #lab_det = torch.cat([torch.tensor([1]), torch.tensor([0])]).to(self.device).to(torch.float32)
-                #loss_det = F.binary_cross_entropy_with_logits(out_det, lab_det)
-                #loss_det_wm = torch.log(out_det_wm)
-                #loss_det_nwm = torch.log(1-out_det_nwm)
-                #loss_det = -torch.add(loss_det_wm, loss_det_nwm, alpha=1)
-                #self.det_optimizer[-1][name].zero_grad()
-                #loss_det_wm.backward()
-                # loss_det_wm.backward()
-                # loss_det_nwm.backward()
-                #self.det_optimizer[-1][name].step()
-            
-                # add all loss
+                for param in self.discriminators[-1][name].parameters():
+                    param.requires_grad = False
+                    
+                # model training 
                 weights = self.get_weights(name)
                 watermark = self.extractors[-1][name](weights)
                 loss_ext = F.binary_cross_entropy_with_logits(watermark, self.secret_keys[-1])
-                #loss_det = - torch.log(self.discriminators[-1][name](weights))
+                loss_det = - torch.log(self.discriminators[-1][name](weights))
                 loss = torch.add(loss, loss_ext, alpha=self.l1s[-1])
-                #loss = torch.add(loss, loss_det, alpha=self.l2s[-1])
-            
+                loss = torch.add(loss, loss_det, alpha=self.l2s[-1])
         
         # Backward and optimize
         for param in self.model.parameters():
             param.requires_grad = True
             
+        print(float(loss))
+            
         self.optimizer.zero_grad()
-        loss.backward(retain_graph=True)
+        loss.backward()
         self.optimizer.step()
-        
-        for param in self.model.parameters():
-            param.requires_grad = False
         
         return loss
     
@@ -322,6 +302,7 @@ if __name__=="__main__":
         
         training = []
         for i, batch in enumerate(trainset):
+            print('--- {} ---'.format(i))
             loss = net._train_one_batch(batch=batch, watermark_init=watermark_init, weights_init=weights_init)
             
             training.append(float(loss))
